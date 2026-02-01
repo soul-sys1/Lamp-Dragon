@@ -1,0 +1,300 @@
+"""
+МОДЕЛЬ ДРАКОНА
+Содержит все данные и логику дракона
+"""
+import random
+from datetime import datetime
+import json
+
+class Dragon:
+    def __init__(self, name="Дракоша"):
+        self.name = name
+        self.created_at = datetime.now().isoformat()
+        
+        # Основные показатели (0-100)
+        self.stats = {
+            "кофе": 70,        # Хочет кофе
+            "сон": 30,         # Хочет спать
+            "настроение": 80,  # Настроение
+            "аппетит": 60,     # Хочет есть
+            "энергия": 75,     # Энергия для игр
+            "пушистость": 90   # Чистота/ухоженность
+        }
+        
+        # Генерируем характер
+        self.character = self._generate_character()
+        
+        # Навыки (0-100)
+        self.skills = {
+            "кофейное_мастерство": 10,
+            "литературный_вкус": 5,
+            "игровая_эрудиция": 5,
+            "вязальная_сноровка": 0
+        }
+        
+        # Прогресс
+        self.level = 1
+        self.experience = 0
+        self.gold = 50
+        
+        # Инвентарь (будет синхронизирован с базой)
+        self.inventory = {}
+        
+        # Привычки
+        self.habits = []
+        
+        # Любимые вещи (определяются характером)
+        self.favorites = self._generate_favorites()
+        
+        # Время последнего обновления
+        self.last_update = datetime.now().isoformat()
+    
+    def _generate_character(self):
+        """Генерирует случайный характер"""
+        traits = [
+            "кофеман",      # Любит кофе больше всего
+            "соня",         # Быстро устает, любит спать
+            "игрик",        # Обожает игры
+            "книгочей",     # Любит читать
+            "неженка",      # Требует много ласки
+            "гурман",       # Разбирается в еде
+            "чистюля",      # Следит за чистотой
+            "лентяй",       # Не любит активность
+            "энерджайзер",  # Всегда полон энергии
+            "философ"       # Любит размышлять
+        ]
+        
+        return {
+            "основная_черта": random.choice(traits),
+            "второстепенные": random.sample([t for t in traits if t != "основная_черта"], 2)
+        }
+    
+    def _generate_favorites(self):
+        """Генерирует любимые вещи в зависимости от характера"""
+        main_trait = self.character["основная_черта"]
+        
+        favorites = {
+            "кофе": random.choice(["эспрессо", "латте", "капучино", "раф", "американо"]),
+            "сладость": random.choice(["печенье", "шоколад", "зефир", "пряник", "мармелад"]),
+            "жанр_книг": random.choice(["фэнтези", "приключения", "сказки", "детектив", "поэзия"]),
+            "цвет": random.choice(["синий", "зеленый", "красный", "фиолетовый", "золотой"])
+        }
+        
+        # Особые предпочтения по характеру
+        if main_trait == "кофеман":
+            favorites["кофе"] = "эспрессо"  # Самый крепкий
+        elif main_trait == "сладкоежка":
+            favorites["сладость"] = "шоколад"
+        elif main_trait == "книгочей":
+            favorites["жанр_книг"] = "фэнтези"
+        elif main_trait == "чистюля":
+            favorites["цвет"] = "белый"
+        
+        return favorites
+    
+    def update_over_time(self):
+        """Обновляет показатели со временем"""
+        now = datetime.now()
+        last_update = datetime.fromisoformat(self.last_update)
+        hours_passed = (now - last_update).total_seconds() / 3600
+        
+        if hours_passed < 0.5:  # Меньше 30 минут
+            return
+        
+        # Кофе уменьшается
+        self.stats["кофе"] = max(0, self.stats["кофе"] - int(5 * hours_passed))
+        
+        # Сонливость растет
+        self.stats["сон"] = min(100, self.stats["сон"] + int(3 * hours_passed))
+        
+        # Аппетит растет
+        self.stats["аппетит"] = min(100, self.stats["аппетит"] + int(2 * hours_passed))
+        
+        # Энергия падает
+        self.stats["энергия"] = max(0, self.stats["энергия"] - int(2 * hours_passed))
+        
+        # Пушистость уменьшается
+        self.stats["пушистость"] = max(0, self.stats["пушистость"] - int(1 * hours_passed))
+        
+        # Настроение зависит от других показателей
+        mood_change = 0
+        
+        if self.stats["кофе"] < 20:
+            mood_change -= 10
+        if self.stats["сон"] > 80:
+            mood_change -= 5
+        if self.stats["аппетит"] > 80:
+            mood_change -= 5
+        if self.stats["энергия"] < 20:
+            mood_change -= 5
+        if self.stats["пушистость"] < 30:
+            mood_change -= 5
+        
+        self.stats["настроение"] = max(0, min(100, self.stats["настроение"] + mood_change))
+        
+        self.last_update = now.isoformat()
+    
+    def add_experience(self, amount):
+        """Добавляет опыт и проверяет повышение уровня"""
+        self.experience += amount
+        levels_gained = 0
+        
+        while self.experience >= 100:
+            self.experience -= 100
+            self.level += 1
+            levels_gained += 1
+            
+            # При повышении уровня улучшаем случайный навык
+            skill = random.choice(list(self.skills.keys()))
+            self.skills[skill] = min(100, self.skills[skill] + 10)
+        
+        return levels_gained
+    
+    def apply_action(self, action_type, action_data=None):
+        """Применяет действие к дракону и возвращает результат"""
+        result = {
+            "success": True,
+            "message": "",
+            "stat_changes": {},
+            "level_up": False
+        }
+        
+        # Эффекты в зависимости от действия
+        effects = {
+            "кофе": {
+                "кофе": +40,
+                "сон": -20,
+                "энергия": +30,
+                "настроение": +10
+            },
+            "кормление": {
+                "аппетит": -40,
+                "настроение": +15,
+                "энергия": +5
+            },
+            "обнимашки": {
+                "настроение": +25,
+                "сон": -10
+            },
+            "расчесывание": {
+                "пушистость": +50,
+                "настроение": +10
+            },
+            "чтение": {
+                "сон": +20,
+                "настроение": +20,
+                "литературный_вкус": +2
+            },
+            "игра": {
+                "энергия": -20,
+                "настроение": +15,
+                "игровая_эрудиция": +2
+            }
+        }
+        
+        if action_type in effects:
+            for stat, change in effects[action_type].items():
+                if stat in self.stats:
+                    old_value = self.stats[stat]
+                    self.stats[stat] = max(0, min(100, old_value + change))
+                    result["stat_changes"][stat] = self.stats[stat] - old_value
+                elif stat in self.skills:
+                    self.skills[stat] = min(100, self.skills[stat] + change)
+            
+            # Даем опыт
+            exp_gained = random.randint(5, 15)
+            levels = self.add_experience(exp_gained)
+            if levels > 0:
+                result["level_up"] = True
+                result["message"] = f"🎉 Дракон достиг {self.level} уровня!"
+            
+            # Проверяем характер для особых бонусов
+            if action_type == "кофе" and self.character["основная_черта"] == "кофеман":
+                result["stat_changes"]["настроение"] = result["stat_changes"].get("настроение", 0) + 10
+                result["message"] += "\n☕ Кофеман в восторге от кофе!"
+            
+            elif action_type == "обнимашки" and self.character["основная_черта"] == "неженка":
+                result["stat_changes"]["настроение"] = result["stat_changes"].get("настроение", 0) + 15
+                result["message"] += "\n🥰 Неженка обожает обнимашки!"
+        
+        return result
+    
+    def get_status_text(self):
+        """Возвращает текстовый статус дракона"""
+        # Обновляем показатели
+        self.update_over_time()
+        
+        # Проверяем критические состояния
+        warnings = []
+        if self.stats["кофе"] < 10:
+            warnings.append("☕ Нужно срочно кофе!")
+        if self.stats["сон"] > 90:
+            warnings.append("💤 Дракон засыпает на ходу...")
+        if self.stats["аппетит"] > 90:
+            warnings.append("🍪 Очень голоден!")
+        if self.stats["настроение"] < 20:
+            warnings.append("😔 Дракон в депрессии...")
+        if self.stats["энергия"] < 10:
+            warnings.append("⚡ Нет сил даже двигаться")
+        if self.stats["пушистость"] < 20:
+            warnings.append("🛁 Пора принять ванну!")
+        
+        # Формируем текст
+        text = f"🐉 **{self.name}** [Уровень {self.level}]\n"
+        text += f"🎭 Характер: {self.character['основная_черта']}\n"
+        text += f"💰 Золото: {self.gold} | ⭐ Опыт: {self.experience}/100\n\n"
+        
+        text += "**ПОКАЗАТЕЛИ:**\n"
+        for stat, value in self.stats.items():
+            bar_length = 10
+            filled = int(value / 100 * bar_length)
+            bar = "█" * filled + "░" * (bar_length - filled)
+            text += f"{stat.capitalize():12} {bar} {value:3}%\n"
+        
+        if warnings:
+            text += "\n**⚠ ВНИМАНИЕ:**\n"
+            for warning in warnings:
+                text += f"• {warning}\n"
+        
+        # Любимые вещи
+        text += f"\n**❤ ЛЮБИМОЕ:**\n"
+        text += f"Кофе: {self.favorites['кофе']}\n"
+        text += f"Сладость: {self.favorites['сладость']}\n"
+        text += f"Книги: {self.favorites['жанр_книг']}\n"
+        text += f"Цвет: {self.favorites['цвет']}"
+        
+        return text
+    
+    def to_dict(self):
+        """Преобразует объект в словарь для сохранения"""
+        return {
+            "name": self.name,
+            "created_at": self.created_at,
+            "stats": self.stats,
+            "character": self.character,
+            "skills": self.skills,
+            "level": self.level,
+            "experience": self.experience,
+            "gold": self.gold,
+            "inventory": self.inventory,
+            "habits": self.habits,
+            "favorites": self.favorites,
+            "last_update": self.last_update
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        """Создает объект из словаря"""
+        dragon = cls(data.get("name", "Дракоша"))
+        dragon.created_at = data.get("created_at", datetime.now().isoformat())
+        dragon.stats = data.get("stats", dragon.stats)
+        dragon.character = data.get("character", dragon.character)
+        dragon.skills = data.get("skills", dragon.skills)
+        dragon.level = data.get("level", 1)
+        dragon.experience = data.get("experience", 0)
+        dragon.gold = data.get("gold", 50)
+        dragon.inventory = data.get("inventory", {})
+        dragon.habits = data.get("habits", [])
+        dragon.favorites = data.get("favorites", dragon.favorites)
+        dragon.last_update = data.get("last_update", datetime.now().isoformat())
+        return dragon
