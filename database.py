@@ -33,7 +33,7 @@ class DragonDatabase:
                 experience INTEGER DEFAULT 0,
                 gold INTEGER DEFAULT 50,
                 last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                dragon_data TEXT NOT NULL,  # JSON со всеми данными
+                dragon_data TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
@@ -95,7 +95,7 @@ class DragonDatabase:
             ''', (
                 user_id,
                 dragon_data.get('name', 'Дракоша'),
-                dragon_data.get('character', {}).get('основная_черта', 'неженка'),  # ИСПРАВЛЕНО: 'основная_черта' вместо 'main_trait'
+                dragon_data.get('character', {}).get('основная_черта', 'неженка'),
                 dragon_data.get('level', 1),
                 dragon_data.get('experience', 0),
                 dragon_data.get('gold', 50),
@@ -141,7 +141,7 @@ class DragonDatabase:
             UPDATE dragons 
             SET dragon_data = ?, 
                 name = ?,
-                character_trait = ?,  # ДОБАВЛЕНО: обновляем character_trait
+                character_trait = ?,
                 level = ?,
                 experience = ?,
                 gold = ?,
@@ -150,7 +150,7 @@ class DragonDatabase:
         ''', (
             json.dumps(dragon_data, ensure_ascii=False),
             dragon_data.get('name', 'Дракоша'),
-            dragon_data.get('character', {}).get('основная_черта', 'неженка'),  # ДОБАВЛЕНО
+            dragon_data.get('character', {}).get('основная_черта', 'неженка'),
             dragon_data.get('level', 1),
             dragon_data.get('experience', 0),
             dragon_data.get('gold', 50),
@@ -250,7 +250,7 @@ class DragonDatabase:
                 (new_level, exp % 100, user_id)
             )
             self.conn.commit()
-            return new_level  # Возвращаем новый уровень
+            return new_level
         return None
     
     def update_habit(self, user_id, habit_type, habit_time):
@@ -268,10 +268,8 @@ class DragonDatabase:
             last_date = datetime.fromisoformat(last_performed).date() if last_performed else None
             
             if last_date and last_date.isoformat() == today:
-                # Уже сегодня выполняли
                 return streak
             
-            # Проверяем, был ли вчера
             if last_date and (datetime.now().date() - last_date).days == 1:
                 streak += 1
             else:
@@ -283,7 +281,6 @@ class DragonDatabase:
                 WHERE user_id = ? AND habit_type = ?
             ''', (streak, habit_time, user_id, habit_type))
         else:
-            # Новая привычка
             streak = 1
             self.cursor.execute('''
                 INSERT INTO habits (user_id, habit_type, habit_time, streak, last_performed)
