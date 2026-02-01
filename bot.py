@@ -12,7 +12,7 @@ import random
 import re
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Union
 from enum import Enum
 
 from aiogram import Bot, Dispatcher, types, F
@@ -80,6 +80,7 @@ class RateLimiter:
             if now - last_time < timedelta(seconds=cooldown_seconds):
                 return False
         
+        # Записываем только если действие разрешено
         self.user_actions[key] = now
         self.user_last_interaction[user_id] = now
         return True
@@ -103,6 +104,10 @@ class RateLimiter:
         now = datetime.now()
         today = now.date()
         
+        # Проверяем, есть ли записи
+        if not self.user_feeding_schedule[user_id]:
+            return True
+        
         # Проверяем, кормили ли сегодня в утренние часы
         for feeding_time in self.user_feeding_schedule[user_id]:
             if feeding_time.date() == today and 8 <= feeding_time.hour <= 9:
@@ -122,8 +127,8 @@ class RateLimiter:
         month_ago = now - timedelta(days=30)
         
         # Очистка действий
-        to_delete = [k for k, v in self.user_actions.items() if v < month_ago]
-        for k in to_delete:
+        keys_to_delete = [k for k, v in self.user_actions.items() if v < month_ago]
+        for k in keys_to_delete:
             del self.user_actions[k]
         
         # Очистка расписания кормления
@@ -180,35 +185,6 @@ class MinigameManager:
         }
     
     @staticmethod
-    def memory_card_game() -> dict:
-        """Игра 'Мемори' на запоминание пар карт"""
-        emojis = ["☕", "🍪", "🐉", "✨", "❤️", "⭐", "🌙", "🌈"]
-        cards = emojis * 2
-        random.shuffle(cards)
-        
-        return {
-            "type": "memory",
-            "cards": cards,
-            "emoji_map": {i: cards[i] for i in range(len(cards))},
-            "description": "🎴 Найди все пары одинаковых эмодзи! Отправляй номера карт (0-15)",
-            "reward": {"gold": 50, "mood": 40, "energy": -20}
-        }
-    
-    @staticmethod
-    def dragon_jump_game() -> dict:
-        """Игра 'Прыжки дракона' - избегай препятствий"""
-        obstacles = ["☕", "🔥", "🌵", "💣", "⚡"]
-        obstacle_count = random.randint(5, 8)
-        game_obstacles = random.choices(obstacles, k=obstacle_count)
-        
-        return {
-            "type": "jump",
-            "obstacles": game_obstacles,
-            "description": f"🐉 Дракон бежит! Избегай {obstacle_count} препятствий. Отправь 'j' для прыжка, 'r' для уворота:",
-            "reward": {"gold": 40, "mood": 35, "energy": -25}
-        }
-    
-    @staticmethod
     def coffee_quiz_game() -> dict:
         """Викторина о кофе"""
         questions = [
@@ -226,6 +202,16 @@ class MinigameManager:
                 "question": "Какой кофе самый крепкий?",
                 "options": ["Эспрессо", "Американо", "Ристретто", "Лунго"],
                 "answer": "Ристретто"
+            },
+            {
+                "question": "Что такое 'латте арт'?",
+                "options": ["Рисунок на кофе", "Особый сорт кофе", "Кофейный напиток", "Кофейная машина"],
+                "answer": "Рисунок на кофе"
+            },
+            {
+                "question": "Какой ингредиент добавляют в капучино?",
+                "options": ["Молоко", "Сливки", "Шоколад", "Корицу"],
+                "answer": "Молоко"
             }
         ]
         
@@ -239,8 +225,35 @@ class MinigameManager:
             "description": "🧠 Викторина о кофе! Дракон задаёт вопрос:",
             "reward": {"gold": 30, "mood": 25, "coffee_skill": 10, "energy": -15}
         }
+    
+    @staticmethod
+    def coffee_tasting_game() -> dict:
+        """Игра на определение вкуса кофе"""
+        coffee_types = {
+            "Арабика": ["Фруктовый", "Сладкий", "Нежный", "Кислинка"],
+            "Робуста": ["Горький", "Землистый", "Крепкий", "Ореховый"],
+            "Либерика": ["Дымный", "Пряный", "Древесный", "Цветочный"],
+            "Эксцельса": ["Экзотический", "Тропический", "Ягодный", "Пряный"]
+        }
+        
+        coffee = random.choice(list(coffee_types.keys()))
+        real_flavors = coffee_types[coffee]
+        fake_flavors = ["Соленый", "Металлический", "Мятный", "Сливочный", "Ванильный", "Карамельный"]
+        
+        # Смешиваем настоящие и ложные вкусы
+        all_flavors = real_flavors + random.sample(fake_flavors, 2)
+        random.shuffle(all_flavors)
+        
+        return {
+            "type": "tasting",
+            "coffee": coffee,
+            "real_flavors": real_flavors,
+            "all_flavors": all_flavors,
+            "description": f"👅 Угадай вкусы кофе {coffee}! Выбери 4 правильных вкуса из списка:",
+            "reward": {"gold": 40, "mood": 30, "coffee_skill": 15, "energy": -20}
+        }
 
-def validate_dragon_name(name: str) -> tuple[bool, Optional[str]]:
+def validate_dragon_name(name: str) -> Tuple[bool, Optional[str]]:
     """Валидация имени дракона"""
     name = name.strip()
     
@@ -359,7 +372,6 @@ def get_short_main_keyboard() -> ReplyKeyboardMarkup:
     )
     return keyboard
 
-@lru_cache(maxsize=1)
 def get_shop_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура магазина"""
     keyboard = InlineKeyboardMarkup(
@@ -412,7 +424,6 @@ def get_shop_keyboard() -> InlineKeyboardMarkup:
     )
     return keyboard
 
-@lru_cache(maxsize=1)
 def get_coffee_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для приготовления кофе"""
     keyboard = InlineKeyboardMarkup(
@@ -437,7 +448,6 @@ def get_coffee_keyboard() -> InlineKeyboardMarkup:
     )
     return keyboard
 
-@lru_cache(maxsize=1)
 def get_minigames_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура мини-игр"""
     keyboard = InlineKeyboardMarkup(
@@ -447,18 +457,16 @@ def get_minigames_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎨 Кофейный арт", callback_data="game_coffee_art")
             ],
             [
-                InlineKeyboardButton(text="🎴 Карточная память", callback_data="game_memory"),
-                InlineKeyboardButton(text="🐉 Прыжки дракона", callback_data="game_jump")
+                InlineKeyboardButton(text="🧠 Кофейная викторина", callback_data="game_quiz"),
+                InlineKeyboardButton(text="👅 Дегустация кофе", callback_data="game_tasting")
             ],
             [
-                InlineKeyboardButton(text="🧠 Кофейная викторина", callback_data="game_quiz"),
                 InlineKeyboardButton(text="« Назад", callback_data="game_back")
             ]
         ]
     )
     return keyboard
 
-@lru_cache(maxsize=1)
 def get_sleep_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для сна"""
     keyboard = InlineKeyboardMarkup(
@@ -522,7 +530,6 @@ def get_care_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     
     return keyboard
 
-@lru_cache(maxsize=1)
 def get_notifications_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура настроек уведомлений"""
     keyboard = InlineKeyboardMarkup(
@@ -698,7 +705,7 @@ async def cmd_start(message: types.Message):
             f"<b>🐾 Тебе выпала честь стать хранителем одного из них!</b>\n\n"
             
             f"<b>📋 ВОЗМОЖНОСТИ 5.1:</b>\n"
-            f"• 🎮 <b>5 разнообразных мини-игр</b> с уникальными механиками\n"
+            f"• 🎮 <b>4 разнообразные мини-игры</b> с уникальными механиками\n"
             f"• 📖 <b>Чтение настоящих книг</b> перед сном\n"
             f"• 😴 <b>Детальные сцены сна</b> с разными вариантами\n"
             f"• 🤗 <b>Живые обнимашки</b> в разных ситуациях\n"
@@ -748,7 +755,7 @@ async def cmd_help(message: types.Message):
         "<code>/care</code> - ухаживать за драконом\n\n"
         
         "<b>🎮 РАЗВЛЕЧЕНИЯ</b>\n"
-        "<code>/games</code> - поиграть в 5 разных игр\n"
+        "<code>/games</code> - поиграть в 4 разные игры\n"
         "<code>/play</code> - быстрая игра\n\n"
         
         "<b>💰 ЭКОНОМИКА</b>\n"
@@ -800,6 +807,7 @@ async def cmd_create(message: types.Message, state: FSMContext):
         
     except Exception as e:
         logger.error(f"Ошибка в cmd_create: {e}")
+        await state.clear()
         await message.answer("<b>❌ Произошла ошибка при создании дракона.</b>", parse_mode="HTML")
 
 @dp.message(GameStates.waiting_for_name)
@@ -826,6 +834,7 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
         
         if not success:
             await message.answer("<b>❌ Не удалось создать дракона. Попробуй еще раз.</b>", parse_mode="HTML")
+            await state.clear()
             return
         
         # Начальный инвентарь
@@ -881,8 +890,8 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
         
     except Exception as e:
         logger.error(f"Ошибка в process_dragon_name: {e}")
-        await message.answer("<b>❌ Произошла ошибка при создании дракона.</b>", parse_mode="HTML")
         await state.clear()
+        await message.answer("<b>❌ Произошла ошибка при создании дракона.</b>", parse_mode="HTML")
 
 # ==================== СТАТУС ДРАКОНА (УЛУЧШЕННЫЙ) ====================
 @dp.message(Command("status"))
@@ -1164,117 +1173,122 @@ async def process_sleep(callback: types.CallbackQuery, state: FSMContext):
 
 async def _process_sleep_action(callback: types.CallbackQuery, dragon: Dragon, sleep_action: str):
     """Обработка действий сна"""
-    user_id = callback.from_user.id
-    dragon_name = dragon.name
-    dragon_trait = dragon.character.get("основная_черта", "")
-    
-    # Применяем действие с новыми модификаторами (60-90%)
-    result = dragon.apply_action("сон")
-    
-    # Новые модификаторы сна (60-90% восстановления)
-    sleep_modifiers = {
-        "read": {"сон": random.randint(70, 90), "настроение": 20, "литературный_вкус": 10},
-        "lay": {"сон": random.randint(75, 90), "настроение": 25},
-        "kiss": {"сон": random.randint(65, 85), "настроение": 30},
-        "sing": {"сон": random.randint(60, 80), "настроение": 15},
-        "toy": {"сон": random.randint(70, 85), "настроение": 20},
-        "simple": {"сон": random.randint(60, 75), "настроение": 10}
-    }
-    
-    modifier = sleep_modifiers.get(sleep_action, sleep_modifiers["simple"])
-    
-    # Применяем модификаторы
-    dragon.stats["сон"] = min(100, dragon.stats.get("сон", 0) + modifier["сон"])
-    dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + modifier.get("настроение", 0))
-    
-    if sleep_action == "read" and "литературный_вкус" in modifier:
-        dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + modifier["литературный_вкус"])
-    
-    # Бонус для сонь
-    if dragon_trait == "соня":
-        dragon.stats["сон"] = min(100, dragon.stats["сон"] + 15)
-        dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
-        character_bonus = "\n<b>😴 Соня обожает спать! +15 к сну, +20 к настроению</b>"
-    else:
-        character_bonus = ""
-    
-    # Сохраняем изменения
-    db.update_dragon(user_id, dragon.to_dict())
-    db.record_action(user_id, f"Уложил спать ({sleep_action})")
-    
-    # Получаем детальное описание действия
-    if sleep_action == "kiss":
-        scenes = ActionDescriptions.get_sleep_kiss_scenes(dragon_name, dragon_trait)
-        description = random.choice(scenes)
-    elif sleep_action == "lay":
-        scenes = [
-            f"Вы ложитесь рядом с {dragon_name} на большую мягкую кровать. Дракон сразу прижимается к вам, "
-            f"ища тепла и защиты. Вы обнимаете его, и вместе вы медленно погружаетесь в сон... 🛏️💤",
-            
-            f"{dragon_name} уже лежит в кровати, но место рядом свободно. Вы ложитесь, и дракон сразу "
-            f"переворачивается на бок, прижимаясь спиной к вам. Вы кладёте руку на его бочок и засыпаете. 😴🐉",
-            
-            f"Вы забираетесь под одеяло рядом с {dragon_name}. Он сонно открывает один глаз, видит вас и "
-            f"довольно мурлычет, забираясь к вам на грудь. Вскоре вы оба засыпаете под тиканье часов. ⏰❤️"
-        ]
-        description = random.choice(scenes)
-    elif sleep_action == "sing":
-        scenes = [
-            f"Вы садитесь на край кровати рядом с {dragon_name} и начинаете тихо напевать старую колыбельную. "
-            f"Дракон закрывает глазки, его дыхание становится ровным. К концу песни он уже крепко спит. 🎵💫",
-            
-            f"{dragon_name} смотрит на вас большими глазами. Вы берёте его на руки, качаете и напеваете "
-            f"нежную мелодию. Постепенно его глазки закрываются, и он засыпает у вас на руках. 👶🐲",
-            
-            f"Вы включаете тихую музыку и садитесь рядом с {dragon_name}. Напевая вместе с мелодией, "
-            f"вы гладите дракона по спинке. Он зевает, потягивается и засыпает под ваше пение. 🎶✨"
-        ]
-        description = random.choice(scenes)
-    elif sleep_action == "toy":
-        scenes = [
-            f"Вы даёте {dragon_name} его любимую плюшевую игрушку - маленького дракончика. "
-            f"Он радостно обнимает её, устраивается поудобнее и почти мгновенно засыпает. 🧸😴",
-            
-            f"{dragon_name} с надеждой смотрит на полку с игрушками. Вы достаёте его любимую погремушку. "
-            f"Дракон берёт её в лапки, тихонько трясёт и засыпает с улыбкой. 🎪💤",
-            
-            f"Вы находите под кроватью старую, но любимую игрушку {dragon_name}. Он счастливо хватает её, "
-            f"прижимает к себе и засыпает, как будто встретил старого друга. 🐻❤️"
-        ]
-        description = random.choice(scenes)
-    elif sleep_action == "simple":
-        scenes = [
-            f"Вы аккуратно укладываете {dragon_name} в его уютную лежанку и накрываете лёгким одеялом. "
-            f"'Спокойной ночи,' - шепчете вы. Дракон зевает и закрывает глаза. 🌙✨",
-            
-            f"Вы поправляете подушку под головой {dragon_name} и накрываете его тёплым пледом. "
-            f"'Сладких снов,' - говорите вы, выключая свет. Дракон мурлычет в ответ. 🛌💫",
-            
-            f"Вы проверяете, удобно ли лежит {dragon_name}, поправляете одеяло и целуете его в макушку. "
-            f"'До утра,' - говорите вы, выходя из комнаты. 🚪😴"
-        ]
-        description = random.choice(scenes)
-    else:
-        description = f"Вы укладываете {dragon_name} спать."
-    
-    response = (
-        f"{description}\n\n"
+    try:
+        user_id = callback.from_user.id
+        dragon_name = dragon.name
+        dragon_trait = dragon.character.get("основная_черта", "")
         
-        f"<b>📊 ПОСЛЕ СНА:</b>\n"
-        f"• 😴 Сон: +{modifier['сон']}% (теперь {dragon.stats.get('сон', 0)}%)\n"
-        f"• 😊 Настроение: +{modifier.get('настроение', 0)}\n"
-    )
-    
-    if sleep_action == "read":
-        response += f"• 📚 Литературный вкус: +10\n"
-    
-    response += character_bonus
-    
-    if result.get("level_up"):
-        response += f"\n\n<b>🎊 {result['message']}</b>"
-    
-    await callback.message.edit_text(response, parse_mode="HTML")
-    await callback.answer()
+        # Применяем действие с новыми модификаторами (60-90%)
+        result = dragon.apply_action("сон")
+        
+        # Новые модификаторы сна (60-90% восстановления)
+        sleep_modifiers = {
+            "read": {"сон": random.randint(70, 90), "настроение": 20, "литературный_вкус": 10},
+            "lay": {"сон": random.randint(75, 90), "настроение": 25},
+            "kiss": {"сон": random.randint(65, 85), "настроение": 30},
+            "sing": {"сон": random.randint(60, 80), "настроение": 15},
+            "toy": {"сон": random.randint(70, 85), "настроение": 20},
+            "simple": {"сон": random.randint(60, 75), "настроение": 10}
+        }
+        
+        modifier = sleep_modifiers.get(sleep_action, sleep_modifiers["simple"])
+        
+        # Применяем модификаторы
+        dragon.stats["сон"] = min(100, dragon.stats.get("сон", 0) + modifier["сон"])
+        dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + modifier.get("настроение", 0))
+        
+        if sleep_action == "read" and "литературный_вкус" in modifier:
+            dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + modifier["литературный_вкус"])
+        
+        # Бонус для сонь
+        if dragon_trait == "соня":
+            dragon.stats["сон"] = min(100, dragon.stats["сон"] + 15)
+            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
+            character_bonus = "\n<b>😴 Соня обожает спать! +15 к сну, +20 к настроению</b>"
+        else:
+            character_bonus = ""
+        
+        # Сохраняем изменения
+        db.update_dragon(user_id, dragon.to_dict())
+        db.record_action(user_id, f"Уложил спать ({sleep_action})")
+        
+        # Получаем детальное описание действия
+        if sleep_action == "kiss":
+            scenes = ActionDescriptions.get_sleep_kiss_scenes(dragon_name, dragon_trait)
+            description = random.choice(scenes)
+        elif sleep_action == "lay":
+            scenes = [
+                f"Вы ложитесь рядом с {dragon_name} на большую мягкую кровать. Дракон сразу прижимается к вам, "
+                f"ища тепла и защиты. Вы обнимаете его, и вместе вы медленно погружаетесь в сон... 🛏️💤",
+                
+                f"{dragon_name} уже лежит в кровати, но место рядом свободно. Вы ложитесь, и дракон сразу "
+                f"переворачивается на бок, прижимаясь спиной к вам. Вы кладёте руку на его бочок и засыпаете. 😴🐉",
+                
+                f"Вы забираетесь под одеяло рядом с {dragon_name}. Он сонно открывает один глаз, видит вас и "
+                f"довольно мурлычет, забираясь к вам на грудь. Вскоре вы оба засыпаете под тиканье часов. ⏰❤️"
+            ]
+            description = random.choice(scenes)
+        elif sleep_action == "sing":
+            scenes = [
+                f"Вы садитесь на край кровати рядом с {dragon_name} и начинаете тихо напевать старую колыбельную. "
+                f"Дракон закрывает глазки, его дыхание становится ровным. К концу песни он уже крепко спит. 🎵💫",
+                
+                f"{dragon_name} смотрит на вас большими глазами. Вы берёте его на руки, качаете и напеваете "
+                f"нежную мелодию. Постепенно его глазки закрываются, и он засыпает у вас на руках. 👶🐲",
+                
+                f"Вы включаете тихую музыку и садитесь рядом с {dragon_name}. Напевая вместе с мелодией, "
+                f"вы гладите дракона по спинке. Он зевает, потягивается и засыпает под ваше пение. 🎶✨"
+            ]
+            description = random.choice(scenes)
+        elif sleep_action == "toy":
+            scenes = [
+                f"Вы даёте {dragon_name} его любимую плюшевую игрушку - маленького дракончика. "
+                f"Он радостно обнимает её, устраивается поудобнее и почти мгновенно засыпает. 🧸😴",
+                
+                f"{dragon_name} с надеждой смотрит на полку с игрушками. Вы достаёте его любимую погремушку. "
+                f"Дракон берёт её в лапки, тихонько трясёт и засыпает с улыбкой. 🎪💤",
+                
+                f"Вы находите под кроватью старую, но любимую игрушку {dragon_name}. Он счастливо хватает её, "
+                f"прижимает к себе и засыпает, как будто встретил старого друга. 🐻❤️"
+            ]
+            description = random.choice(scenes)
+        elif sleep_action == "simple":
+            scenes = [
+                f"Вы аккуратно укладываете {dragon_name} в его уютную лежанку и накрываете лёгким одеялом. "
+                f"'Спокойной ночи,' - шепчете вы. Дракон зевает и закрывает глаза. 🌙✨",
+                
+                f"Вы поправляете подушку под головой {dragon_name} и накрываете его тёплым пледом. "
+                f"'Сладких снов,' - говорите вы, выключая свет. Дракон мурлычет в ответ. 🛌💫",
+                
+                f"Вы проверяете, удобно ли лежит {dragon_name}, поправляете одеяло и целуете его в макушку. "
+                f"'До утра,' - говорите вы, выходя из комнаты. 🚪😴"
+            ]
+            description = random.choice(scenes)
+        else:
+            description = f"Вы укладываете {dragon_name} спать."
+        
+        response = (
+            f"{description}\n\n"
+            
+            f"<b>📊 ПОСЛЕ СНА:</b>\n"
+            f"• 😴 Сон: +{modifier['сон']}% (теперь {dragon.stats.get('сон', 0)}%)\n"
+            f"• 😊 Настроение: +{modifier.get('настроение', 0)}\n"
+        )
+        
+        if sleep_action == "read":
+            response += f"• 📚 Литературный вкус: +10\n"
+        
+        response += character_bonus
+        
+        if result.get("level_up"):
+            response += f"\n\n<b>🎊 {result['message']}</b>"
+        
+        await callback.message.edit_text(response, parse_mode="HTML")
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка в _process_sleep_action: {e}")
+        await callback.answer("❌ Произошла ошибка")
 
 @dp.message(GameStates.book_reading)
 async def process_book_reading(message: types.Message, state: FSMContext):
@@ -1330,13 +1344,13 @@ async def process_book_reading(message: types.Message, state: FSMContext):
             f"<i>Дракон сладко спит, улыбаясь во сне... 💤✨</i>"
         )
         
-        await message.answer(response, parse_mode="HTML", reply_markup=get_main_keyboard())
+        await message.answer(response, parse_mode="HTML", reply_mup=get_main_keyboard())
         await state.clear()
         
     except Exception as e:
         logger.error(f"Ошибка в process_book_reading: {e}")
-        await message.answer("<b>❌ Произошла ошибка при чтении книги.</b>", parse_mode="HTML")
         await state.clear()
+        await message.answer("<b>❌ Произошла ошибка при чтении книги.</b>", parse_mode="HTML")
 
 # ==================== ОБНИМАШКИ С ДЕТАЛЬНЫМИ СЦЕНАМИ ====================
 @dp.message(Command("hug"))
@@ -1440,9 +1454,8 @@ async def cmd_games(message: types.Message):
             "<b>✨ Улучшенные игры:</b>\n"
             "• 🔢 <b>Угадай число</b> - классика с подсказками (1-20)\n"
             "• 🎨 <b>Кофейный арт</b> - запомни последовательность\n"
-            "• 🎴 <b>Карточная память</b> - найди все пары\n"
-            "• 🐉 <b>Прыжки дракона</b> - избегай препятствий\n"
-            "• 🧠 <b>Кофейная викторина</b> - проверь знания\n\n"
+            "• 🧠 <b>Кофейная викторина</b> - проверь знания о кофе\n"
+            "• 👅 <b>Дегустация кофе</b> - угадай вкусы разных сортов\n\n"
             
             f"⚡ <i>Энергия дракона:</i> <code>{dragon.stats.get('энергия', 0)}%</code>\n"
             f"🎭 <i>Характер:</i> <code>{dragon.character.get('основная_черта', '')}</code>\n\n"
@@ -1529,49 +1542,6 @@ async def process_game_choice(callback: types.CallbackQuery, state: FSMContext):
             
             await state.set_state(GameStates.minigame_state)
             
-        elif game_type == "memory":
-            game = minigame_manager.memory_card_game()
-            await state.update_data(current_game=game)
-            
-            # Показываем карты номерами
-            cards_display = ""
-            for i in range(0, 16, 4):
-                row = [f"{j:2}" for j in range(i, i+4)]
-                cards_display += " │ ".join(row) + "\n"
-                if i < 12:
-                    cards_display += "─" * 25 + "\n"
-            
-            await callback.message.edit_text(
-                f"<b>🎴 ИГРА: КАРТОЧНАЯ ПАМЯТЬ</b>\n\n"
-                f"{game['description']}\n\n"
-                f"<code>{cards_display}</code>\n\n"
-                f"<b>Пример хода:</b> <code>0 5</code> - открыть карты 0 и 5\n"
-                f"<b>Цель:</b> найти все 8 пар за минимальное число ходов!\n\n"
-                f"<i>Сделай первый ход:</i>",
-                parse_mode="HTML"
-            )
-            
-            await state.set_state(GameStates.minigame_state)
-            
-        elif game_type == "jump":
-            game = minigame_manager.dragon_jump_game()
-            await state.update_data(current_game=game)
-            
-            obstacles_display = " ".join(game["obstacles"])
-            await callback.message.edit_text(
-                f"<b>🐉 ИГРА: ПРЫЖКИ ДРАКОНА</b>\n\n"
-                f"{game['description']}\n\n"
-                f"<b>Дорога:</b> {obstacles_display}\n\n"
-                f"<b>Управление:</b>\n"
-                f"• <code>j</code> - прыжок через препятствие\n"
-                f"• <code>r</code> - уворот вправо\n"
-                f"• <code>l</code> - уворот влево\n\n"
-                f"<i>Отправляй команды по одной:</i>",
-                parse_mode="HTML"
-            )
-            
-            await state.set_state(GameStates.minigame_state)
-            
         elif game_type == "quiz":
             game = minigame_manager.coffee_quiz_game()
             await state.update_data(current_game=game)
@@ -1585,6 +1555,24 @@ async def process_game_choice(callback: types.CallbackQuery, state: FSMContext):
                 f"<b>📋 Варианты:</b>\n"
                 f"{options_text}\n\n"
                 f"<b>Введи номер правильного ответа:</b>",
+                parse_mode="HTML"
+            )
+            
+            await state.set_state(GameStates.minigame_state)
+            
+        elif game_type == "tasting":
+            game = minigame_manager.coffee_tasting_game()
+            await state.update_data(current_game=game)
+            
+            flavors_text = "\n".join([f"{i+1}. {flavor}" for i, flavor in enumerate(game["all_flavors"])])
+            
+            await callback.message.edit_text(
+                f"<b>👅 ИГРА: ДЕГУСТАЦИЯ КОФЕ</b>\n\n"
+                f"{game['description']}\n\n"
+                f"<b>☕ Сорт кофе:</b> {game['coffee']}\n\n"
+                f"<b>📋 Возможные вкусы:</b>\n"
+                f"{flavors_text}\n\n"
+                f"<b>Введи номера 4 правильных вкусов через пробел (например: 1 2 3 4):</b>",
                 parse_mode="HTML"
             )
             
@@ -1622,8 +1610,6 @@ async def process_minigame_answer(message: types.Message, state: FSMContext):
         
         # Обработка разных игр
         if game["type"] == "guess":
-            # Здесь должна быть логика обработки угадывания числа
-            # Для простоты оставляем базовую логику
             try:
                 guess = int(user_answer)
                 if 1 <= guess <= 20:
@@ -1725,20 +1711,51 @@ async def process_minigame_answer(message: types.Message, state: FSMContext):
             except ValueError:
                 response = "<b>❌ Введи число!</b>"
         
-        else:
-            # Для остальных игр - упрощенная логика
-            dragon.gold += 20
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
-            dragon.stats["энергия"] = max(0, dragon.stats["энергия"] - 10)
-            
-            response = (
-                f"<b>🎮 ИГРА ЗАВЕРШЕНА!</b>\n\n"
-                f"Дракон весело проводит время с тобой!\n\n"
-                f"<b>📊 РЕЗУЛЬТАТ:</b>\n"
-                f"• 💰 Золото: +20\n"
-                f"• 😊 Настроение: +15\n"
-                f"• ⚡ Энергия: -10\n"
-            )
+        elif game["type"] == "tasting":
+            try:
+                selected_nums = [int(x) for x in user_answer.split()]
+                if len(selected_nums) != 4:
+                    response = "<b>❌ Нужно выбрать ровно 4 вкуса!</b>"
+                else:
+                    # Проверяем, что все номера в диапазоне
+                    if any(num < 1 or num > len(game["all_flavors"]) for num in selected_nums):
+                        response = f"<b>❌ Номера должны быть от 1 до {len(game['all_flavors'])}!</b>"
+                    else:
+                        selected_flavors = [game["all_flavors"][num-1] for num in selected_nums]
+                        correct_count = sum(1 for flavor in selected_flavors if flavor in game["real_flavors"])
+                        
+                        if correct_count == 4:
+                            dragon.gold += game["reward"]["gold"]
+                            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + game["reward"]["mood"])
+                            dragon.skills["кофейное_мастерство"] = min(100, 
+                                dragon.skills.get("кофейное_мастерство", 0) + game["reward"]["coffee_skill"])
+                            dragon.stats["энергия"] = max(0, dragon.stats["энергия"] + game["reward"]["energy"])
+                            
+                            response = (
+                                f"<b>🎉 БРАВО! Все 4 вкуса угаданы правильно! 🎉</b>\n\n"
+                                f"Дракон поражён твоим дегустаторским талантом!\n\n"
+                                f"<b>🏆 НАГРАДА:</b>\n"
+                                f"• 💰 Золото: +{game['reward']['gold']}\n"
+                                f"• 😊 Настроение: +{game['reward']['mood']}\n"
+                                f"• 🎨 Кофейное мастерство: +{game['reward']['coffee_skill']}\n"
+                            )
+                        else:
+                            dragon.gold += game["reward"]["gold"] // 2
+                            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + game["reward"]["mood"] // 2)
+                            dragon.skills["кофейное_мастерство"] = min(100, 
+                                dragon.skills.get("кофейное_мастерство", 0) + game["reward"]["coffee_skill"] // 2)
+                            
+                            real_flavors_text = ", ".join(game["real_flavors"])
+                            response = (
+                                f"<b>📊 УГАДАНО {correct_count} из 4 вкусов</b>\n\n"
+                                f"Правильные вкусы: {real_flavors_text}\n\n"
+                                f"<b>📊 РЕЗУЛЬТАТ:</b>\n"
+                                f"• 💰 Золото: +{game['reward']['gold'] // 2}\n"
+                                f"• 😊 Настроение: +{game['reward']['mood'] // 2}\n"
+                                f"• 🎨 Кофейное мастерство: +{game['reward']['coffee_skill'] // 2}\n"
+                            )
+            except ValueError:
+                response = "<b>❌ Введи номера через пробел!</b>"
         
         # Бонус для игрика
         if dragon.character.get("основная_черта") == "игрик":
@@ -1747,9 +1764,6 @@ async def process_minigame_answer(message: types.Message, state: FSMContext):
         
         # Сохраняем изменения
         db.update_dragon(user_id, dragon.to_dict())
-        if "gold" in locals() and dragon.gold > db.get_gold(user_id):
-            db.add_gold(user_id, dragon.gold - db.get_gold(user_id))
-        
         db.record_action(user_id, f"Мини-игра: {game['type']}")
         
         response += (
@@ -1764,8 +1778,8 @@ async def process_minigame_answer(message: types.Message, state: FSMContext):
         
     except Exception as e:
         logger.error(f"Ошибка в process_minigame_answer: {e}")
-        await message.answer("<b>❌ Произошла ошибка в игре.</b>", parse_mode="HTML")
         await state.clear()
+        await message.answer("<b>❌ Произошла ошибка в игре.</b>", parse_mode="HTML")
 
 # ==================== УХОД С ДЕТАЛЬНЫМИ ОПИСАНИЯМИ ====================
 @dp.message(Command("care"))
@@ -2153,6 +2167,12 @@ async def cmd_feed(message: types.Message):
         logger.error(f"Ошибка в cmd_feed: {e}")
         await message.answer("<b>❌ Произошла ошибка при кормлении.</b>", parse_mode="HTML")
 
+# ==================== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ====================
+@dp.error()
+async def error_handler(event: Exception, *args, **kwargs):
+    """Глобальный обработчик ошибок"""
+    logger.error(f"Необработанная ошибка: {event}")
+
 # ==================== ЗАПУСК БОТА С УВЕДОМЛЕНИЯМИ ====================
 async def scheduled_notifications():
     """Планировщик уведомлений"""
@@ -2163,6 +2183,8 @@ async def scheduled_notifications():
             rate_limiter.clear_old_entries()
         except Exception as e:
             logger.error(f"Ошибка в scheduled_notifications: {e}")
+        except KeyboardInterrupt:
+            break
         
         # Проверяем каждые 30 минут
         await asyncio.sleep(1800)
