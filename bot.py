@@ -81,25 +81,17 @@ def validate_dragon_name(name: str) -> tuple[bool, Optional[str]]:
     
     # Проверка длины
     if len(name) < 2:
-        return False, "Имя должно быть хотя бы 2 символа."
+        return False, "Имя должно быть хотя бы 2 символа"
     
     if len(name) > 20:
-        return False, "Имя слишком длинное. Максимум 20 символов."
+        return False, "Имя слишком длинное. Максимум 20 символов"
     
     # Проверка символов
     import re
     if re.search(r'[<>{}[\]\\|`~!@#$%^&*()_+=]', name):
-        return False, "Имя содержит недопустимые символы."
+        return False, "Имя содержит недопустимые символы"
     
     return True, None
-
-def safe_json_loads(data: str):
-    """Безопасная загрузка JSON"""
-    import json
-    try:
-        return json.loads(data)
-    except json.JSONDecodeError:
-        return None
 
 # ==================== КЛАВИАТУРЫ ====================
 def get_main_keyboard() -> ReplyKeyboardMarkup:
@@ -173,6 +165,35 @@ def get_coffee_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
+    return keyboard
+
+def get_feed_keyboard(inventory: dict) -> InlineKeyboardMarkup:
+    """Клавиатура для кормления на основе инвентаря"""
+    snack_items = {
+        "печенье": "🍪 Печенье",
+        "шоколад": "🍫 Шоколад", 
+        "зефир": "☁️ Зефир",
+        "пряник": "🎄 Пряник",
+        "мармелад": "🍬 Мармелад"
+    }
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    row = []
+    
+    for snack_key, snack_name in snack_items.items():
+        if inventory.get(snack_key, 0) > 0:
+            row.append(InlineKeyboardButton(text=snack_name, callback_data=f"feed_{snack_key}"))
+            if len(row) == 2:
+                keyboard.inline_keyboard.append(row)
+                row = []
+    
+    if row:
+        keyboard.inline_keyboard.append(row)
+    
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(text="❌ Отмена", callback_data="feed_cancel")
+    ])
+    
     return keyboard
 
 # Инициализация ограничителя частоты
@@ -296,11 +317,12 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
         success = db.create_dragon(user_id, dragon_data)
         
         if not success:
-            await message.answer("Не удалось создать дракона. Попробуй еще раз.")
+            await message.answer("Не удалось создать дракон. Попробуй еще раз.")
             return
         
-        # Получаем характер для приветствия
-        character = dragon.character["основная_черта"]
+        # Получаем характер для приветствия - ИСПРАВЛЕННАЯ СТРОКА
+        character = dragon.character.get("основная_черта", "неженка")
+        
         character_descriptions = {
             "кофеман": "Обожает кофе больше всего на свете",
             "соня": "Любит поспать и вздремнуть после кофе",
@@ -444,7 +466,7 @@ async def process_coffee_choice(callback: types.CallbackQuery):
                 if stat in dragon.stats:
                     dragon.stats[stat] = max(0, min(100, dragon.stats[stat] + change))
         
-        # Проверяем, любимый ли это кофе
+        # Проверяем, любимый ли это кофе - ИСПРАВЛЕННАЯ СТРОКА
         coffee_names = {
             "espresso": "эспрессо",
             "latte": "латте", 
@@ -454,7 +476,7 @@ async def process_coffee_choice(callback: types.CallbackQuery):
         }
         
         current_coffee = coffee_names.get(coffee_type, "")
-        if current_coffee == dragon.favorites["кофе"]:
+        if current_coffee == dragon.favorites.get("кофе", ""):
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
             favorite_bonus = "\n🎉 Это его любимый кофе! +15 к настроению"
         else:
@@ -513,22 +535,9 @@ async def cmd_feed(message: types.Message):
         
         # Проверяем, что есть чем кормить
         available_snacks = []
-        snack_items = {
-            "печенье": "🍪 Печенье",
-            "шоколад": "🍫 Шоколад", 
-            "зефир": "☁️ Зефир",
-            "пряник": "🎄 Пряник",
-            "мармелад": "🍬 Мармелад"
-        }
-        
-        for snack_key, snack_name in snack_items.items():
+        for snack_key in ["печенье", "шоколад", "зефир", "пряник", "мармелад"]:
             if inventory.get(snack_key, 0) > 0:
-                available_snacks.append(
-                    InlineKeyboardButton(
-                        text=snack_name, 
-                        callback_data=f"feed_{snack_key}"
-                    )
-                )
+                available_snacks.append(snack_key)
         
         if not available_snacks:
             await message.answer(
@@ -538,22 +547,10 @@ async def cmd_feed(message: types.Message):
             )
             return
         
-        # Создаем клавиатуру со сладостями
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-        
-        # Распределяем кнопки по 2 в ряд
-        for i in range(0, len(available_snacks), 2):
-            row = available_snacks[i:i+2]
-            keyboard.inline_keyboard.append(row)
-        
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text="❌ Отмена", callback_data="feed_cancel")
-        ])
-        
         await message.answer(
             "🍪 **Чем угостим дракона?**\n\n"
             "Выбери сладость из инвентаря",
-            reply_markup=keyboard
+            reply_markup=get_feed_keyboard(inventory)
         )
         
     except Exception as e:
@@ -579,32 +576,20 @@ async def process_feed(callback: types.CallbackQuery):
         
         # Проверяем, есть ли такая сладость
         inventory = db.get_inventory(user_id)
-        
-        # Сопоставляем названия с инвентарем
-        snack_mapping = {
-            "печенье": "печенье",
-            "шоколад": "шоколад",
-            "зефир": "зефир", 
-            "пряник": "пряник",
-            "мармелад": "мармелад"
-        }
-        
-        inventory_key = snack_mapping.get(snack_type, snack_type)
-        
-        if inventory.get(inventory_key, 0) <= 0:
+        if inventory.get(snack_type, 0) <= 0:
             await callback.answer("Эта сладость закончилась")
             return
         
         dragon = Dragon.from_dict(dragon_data)
         
         # Используем сладость
-        db.update_inventory(user_id, inventory_key, -1)
+        db.update_inventory(user_id, snack_type, -1)
         
         # Применяем действие
         result = dragon.apply_action("кормление")
         
-        # Проверяем, любимая ли это сладость
-        if snack_type == dragon.favorites["сладость"]:
+        # Проверяем, любимая ли это сладость - ИСПРАВЛЕННАЯ СТРОКА
+        if snack_type == dragon.favorites.get("сладость", ""):
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
             favorite_bonus = "\n🎉 Это его любимая сладость! +20 к настроению"
         else:
@@ -663,8 +648,9 @@ async def cmd_hug(message: types.Message):
         # Применяем действие
         result = dragon.apply_action("обнимашки")
         
-        # Бонус для неженки
-        if dragon.character["основная_черта"] == "неженка":
+        # Бонус для неженки - ИСПРАВЛЕННАЯ СТРОКА
+        character_trait = dragon.character.get("основная_черта", "")
+        if character_trait == "неженка":
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
             character_bonus = "\n🥰 Неженка обожает обнимашки! +15 к настроению"
         else:
@@ -775,8 +761,8 @@ async def process_read(callback: types.CallbackQuery):
         # Применяем действие
         result = dragon.apply_action("чтение")
         
-        # Проверяем, любимый ли это жанр
-        if book["жанр"] == dragon.favorites["жанр_книг"]:
+        # Проверяем, любимый ли это жанр - ИСПРАВЛЕННАЯ СТРОКА
+        if book.get("жанр", "") == dragon.favorites.get("жанр_книг", ""):
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
             dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + 5)
             favorite_bonus = "\n🎉 Это его любимый жанр! +15 к настроению, +5 к литературному вкусу"
@@ -788,10 +774,10 @@ async def process_read(callback: types.CallbackQuery):
         
         # Формируем ответ
         response = (
-            f"📖 **{book['название']}**\n"
-            f"Автор: {book['автор']}\n\n"
-            f"📝 **О чем книга**\n{book['описание']}\n\n"
-            f"🐉 **Мнение дракона**\n{book['комментарий_дракона']}\n\n"
+            f"📖 **{book.get('название', 'Неизвестная книга')}**\n"
+            f"Автор: {book.get('автор', 'Неизвестен')}\n\n"
+            f"📝 **О чем книга**\n{book.get('описание', 'Нет описания')}\n\n"
+            f"🐉 **Мнение дракона**\n{book.get('комментарий_дракона', 'Интересно!')}\n\n"
             f"📊 **После чтения**\n"
             f"• Настроение: +{result['stat_changes'].get('настроение', 0)}\n"
             f"• Литературный вкус: +2{favorite_bonus}"
@@ -910,8 +896,9 @@ async def process_game_guess(message: types.Message, state: FSMContext):
                 f"• Игровая эрудиция: +2"
             )
         
-        # Бонус для игрика
-        if dragon.character["основная_черта"] == "игрик":
+        # Бонус для игрика - ИСПРАВЛЕННАЯ СТРОКА
+        character_trait = dragon.character.get("основная_черта", "")
+        if character_trait == "игрик":
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 10)
             response += "\n\n🎮 Игрик обожает игры! +10 к настроению"
         
@@ -936,7 +923,7 @@ async def cmd_clean(message: types.Message):
         user_id = message.from_user.id
         
         # Проверка ограничителя частоты
-        if not rate_limiter.can_perform_action(user_id, "clean", 300):  # 5 минут
+        if not rate_limiter.can_perform_action(user_id, "clean", 300):
             await message.answer("Дракон уже чист. Подожди немного ✨")
             return
         
@@ -950,8 +937,9 @@ async def cmd_clean(message: types.Message):
         # Применяем действие
         result = dragon.apply_action("расчесывание")
         
-        # Бонус для чистюли
-        if dragon.character["основная_черта"] == "чистюля":
+        # Бонус для чистюли - ИСПРАВЛЕННАЯ СТРОКА
+        character_trait = dragon.character.get("основная_черта", "")
+        if character_trait == "чистюля":
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
             character_bonus = "\n✨ Чистюля сияет от счастья! +20 к настроению"
         else:
@@ -1226,17 +1214,17 @@ async def cmd_stats(message: types.Message):
         # Характер
         character_text = (
             f"🎭 **Характер**\n"
-            f"• Основная черта: {dragon.character['основная_черта']}\n"
-            f"• Дополнительные: {', '.join(dragon.character['второстепенные'])}\n"
+            f"• Основная черта: {dragon.character.get('основная_черта', 'неженка')}\n"
+            f"• Дополнительные: {', '.join(dragon.character.get('второстепенные', []))}\n"
         )
         
         # Любимое
         favorites_text = (
             f"❤ **Любимое**\n"
-            f"• Кофе: {dragon.favorites['кофе']}\n"
-            f"• Сладость: {dragon.favorites['сладость']}\n"
-            f"• Книги: {dragon.favorites['жанр_книг']}\n"
-            f"• Цвет: {dragon.favorites['цвет']}\n"
+            f"• Кофе: {dragon.favorites.get('кофе', 'эспрессо')}\n"
+            f"• Сладость: {dragon.favorites.get('сладость', 'печенье')}\n"
+            f"• Книги: {dragon.favorites.get('жанр_книг', 'фэнтези')}\n"
+            f"• Цвет: {dragon.favorites.get('цвет', 'синий')}\n"
         )
         
         # Прогресс
