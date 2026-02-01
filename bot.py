@@ -933,7 +933,7 @@ async def cmd_read(message: types.Message):
 
 @dp.callback_query(F.data.startswith("read_"))
 async def process_read(callback: types.CallbackQuery):
-    """Обработка чтения книги"""
+    """Обработка чтения книги - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         user_id = callback.from_user.id
         read_type = callback.data.replace("read_", "")
@@ -956,8 +956,15 @@ async def process_read(callback: types.CallbackQuery):
         # Получаем книгу
         if read_type == "random":
             book = get_random_book()
+            # Для случайной книги определяем жанр
+            book_genre = None
+            for genre, books_list in BOOKS_DATABASE.items():
+                if book in books_list:
+                    book_genre = genre
+                    break
         else:
             book = get_random_book(read_type)
+            book_genre = read_type
         
         if not book:
             await callback.answer("❌ Книги не найдены")
@@ -967,21 +974,32 @@ async def process_read(callback: types.CallbackQuery):
         result = dragon.apply_action("чтение")
         
         # Проверяем, любимый ли это жанр
-        if book.get("жанр", "") == dragon.favorites.get("жанр_книг", ""):
+        if book_genre and book_genre == dragon.favorites.get("жанр_книг", ""):
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
             dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + 5)
             favorite_bonus = "<b>🎉 Это его любимый жанр! +15 к настроению, +5 к литературному вкусу</b>\n"
         else:
             favorite_bonus = ""
         
+        # Улучшаем литературный вкус в любом случае
+        dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + 2)
+        
         # Сохраняем изменения
         db.update_dragon(user_id, dragon.to_dict())
         
         # Формируем ответ
         response = (
-            f"<b>📖 {book.get('название', 'Неизвестная книга')}</b>\n"
-            f"<i>✍️ Автор:</i> <code>{book.get('автор', 'Неизвестен')}</code>\n\n"
-            
+            f"<b>📖 {escape_html(book.get('название', 'Неизвестная книга'))}</b>\n"
+            f"<i>✍️ Автор:</i> <code>{escape_html(book.get('автор', 'Неизвестен'))}</code>\n"
+        )
+        
+        # Добавляем жанр книги, если он известен
+        if book_genre:
+            response += f"<i>📚 Жанр:</i> <code>{book_genre.capitalize()}</code>\n\n"
+        else:
+            response += "\n"
+        
+        response += (
             f"<b>📝 О ЧЕМ КНИГА:</b>\n"
             f"{book.get('описание', 'Нет описания')}\n\n"
             
