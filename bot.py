@@ -747,7 +747,7 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
             
             f"<b>❤ ЛЮБИМОЕ:</b>\n"
             f"• ☕ Кофе: <code>{dragon.favorites['кофе']}</code>\n"
-            f"• 🍬 Сладость: <code>{davorites['сладость']}</code>\n"
+            f"• 🍬 Сладость: <code>{dragon.favorites['сладость']}</code>\n"
             f"• 📚 Книги: <code>{dragon.favorites['жанр_книг']}</code>\n\n"
             
             f"<b>📦 НАЧАЛЬНЫЙ ИНВЕНТАРЬ:</b>\n"
