@@ -33,7 +33,7 @@ class DragonDatabase:
                 experience INTEGER DEFAULT 0,
                 gold INTEGER DEFAULT 50,
                 last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                dragon_data TEXT NOT NULL,  -- JSON со всеми данными
+                dragon_data TEXT NOT NULL,  # JSON со всеми данными
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
@@ -88,36 +88,18 @@ class DragonDatabase:
     def create_dragon(self, user_id, dragon_data):
         """Создает нового дракона"""
         if not self.dragon_exists(user_id):
-            # Правильная структура дракона для сохранения в JSON
-            dragon_json = {
-                'name': dragon_data.get('name', 'Дракоша'),
-                'character': dragon_data.get('character', {
-                    'main_trait': dragon_data.get('character_trait', 'неженка'),
-                    'mood': 'спокойный',
-                    'energy': 100,
-                    'hunger': 50,
-                    'health': 100
-                }),
-                'level': dragon_data.get('level', 1),
-                'experience': dragon_data.get('experience', 0),
-                'gold': dragon_data.get('gold', 50),
-                'last_fed': datetime.now().isoformat(),
-                'last_played': datetime.now().isoformat(),
-                'created': datetime.now().isoformat()
-            }
-            
             self.cursor.execute('''
                 INSERT INTO dragons 
                 (user_id, name, character_trait, level, experience, gold, dragon_data)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 user_id,
-                dragon_json['name'],
-                dragon_json['character']['main_trait'],
-                dragon_json['level'],
-                dragon_json['experience'],
-                dragon_json['gold'],
-                json.dumps(dragon_json, ensure_ascii=False)
+                dragon_data.get('name', 'Дракоша'),
+                dragon_data.get('character', {}).get('основная_черта', 'неженка'),  # ИСПРАВЛЕНО: 'основная_черта' вместо 'main_trait'
+                dragon_data.get('level', 1),
+                dragon_data.get('experience', 0),
+                dragon_data.get('gold', 50),
+                json.dumps(dragon_data, ensure_ascii=False)
             ))
             
             # Создаем начальный инвентарь
@@ -147,69 +129,31 @@ class DragonDatabase:
         result = self.cursor.fetchone()
         if result:
             try:
-                data = json.loads(result[0])
-                # Убедимся, что структура правильная
-                if 'character' not in data:
-                    data['character'] = {
-                        'main_trait': data.get('character_trait', 'неженка'),
-                        'mood': 'спокойный',
-                        'energy': 100,
-                        'hunger': 50,
-                        'health': 100
-                    }
-                return data
-            except json.JSONDecodeError:
-                # Если JSON поврежден, создаем нового дракона
-                self.cursor.execute(
-                    "DELETE FROM dragons WHERE user_id = ?",
-                    (user_id,)
-                )
-                self.conn.commit()
+                return json.loads(result[0])
+            except json.JSONDecodeError as e:
+                print(f"Ошибка декодирования JSON для пользователя {user_id}: {e}")
+                return None
         return None
     
     def update_dragon(self, user_id, dragon_data):
         """Обновляет данные дракона"""
-        # Обновляем дракона с правильной структурой
-        dragon_json = {
-            'name': dragon_data.get('name', 'Дракоша'),
-            'character': dragon_data.get('character', {
-                'main_trait': dragon_data.get('character_trait', 'неженка'),
-                'mood': dragon_data.get('mood', 'спокойный'),
-                'energy': dragon_data.get('energy', 100),
-                'hunger': dragon_data.get('hunger', 50),
-                'health': dragon_data.get('health', 100)
-            }),
-            'level': dragon_data.get('level', 1),
-            'experience': dragon_data.get('experience', 0),
-            'gold': dragon_data.get('gold', 50),
-            'last_interaction': datetime.now().isoformat()
-        }
-        
-        # Если есть временные метки, сохраняем их
-        if 'last_fed' in dragon_data:
-            dragon_json['last_fed'] = dragon_data['last_fed']
-        if 'last_played' in dragon_data:
-            dragon_json['last_played'] = dragon_data['last_played']
-        if 'created' in dragon_data:
-            dragon_json['created'] = dragon_data['created']
-        
         self.cursor.execute('''
             UPDATE dragons 
             SET dragon_data = ?, 
                 name = ?,
-                character_trait = ?,
+                character_trait = ?,  # ДОБАВЛЕНО: обновляем character_trait
                 level = ?,
                 experience = ?,
                 gold = ?,
                 last_interaction = CURRENT_TIMESTAMP
             WHERE user_id = ?
         ''', (
-            json.dumps(dragon_json, ensure_ascii=False),
-            dragon_json['name'],
-            dragon_json['character']['main_trait'],
-            dragon_json['level'],
-            dragon_json['experience'],
-            dragon_json['gold'],
+            json.dumps(dragon_data, ensure_ascii=False),
+            dragon_data.get('name', 'Дракоша'),
+            dragon_data.get('character', {}).get('основная_черта', 'неженка'),  # ДОБАВЛЕНО
+            dragon_data.get('level', 1),
+            dragon_data.get('experience', 0),
+            dragon_data.get('gold', 50),
             user_id
         ))
         self.conn.commit()
@@ -255,6 +199,8 @@ class DragonDatabase:
                     item_type = 'coffee'
                 elif 'чашк' in item_name or 'кружк' in item_name:
                     item_type = 'cup'
+                elif 'кость' in item_name:
+                    item_type = 'game'
                 
                 self.cursor.execute('''
                     INSERT INTO inventory (user_id, item_type, item_name, quantity)
@@ -294,18 +240,17 @@ class DragonDatabase:
             "SELECT level, experience FROM dragons WHERE user_id = ?",
             (user_id,)
         )
-        result = self.cursor.fetchone()
-        if result:
-            level, exp = result
-            # Каждый уровень требует 100 опыта
-            new_level = level + (exp // 100)
-            if new_level > level:
-                self.cursor.execute(
-                    "UPDATE dragons SET level = ?, experience = ? WHERE user_id = ?",
-                    (new_level, exp % 100, user_id)
-                )
-                self.conn.commit()
-                return new_level  # Возвращаем новый уровень
+        level, exp = self.cursor.fetchone()
+        
+        # Каждый уровень требует 100 опыта
+        new_level = level + (exp // 100)
+        if new_level > level:
+            self.cursor.execute(
+                "UPDATE dragons SET level = ?, experience = ? WHERE user_id = ?",
+                (new_level, exp % 100, user_id)
+            )
+            self.conn.commit()
+            return new_level  # Возвращаем новый уровень
         return None
     
     def update_habit(self, user_id, habit_type, habit_time):
