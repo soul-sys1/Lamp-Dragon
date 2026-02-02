@@ -1,7 +1,7 @@
 """
-БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v5.0
-Хранит всех драконов в SQLite базе с новыми функциями
-БЕЗ FOREIGN KEY constraints для простоты и надежности
+БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v5.1
+Хранит всех драконов в SQLite базе с обновленными функциями
+Вода удалена из начального инвентаря
 """
 import sqlite3
 import json
@@ -173,12 +173,11 @@ class DragonDatabase:
                     json.dumps(dragon_data, ensure_ascii=False)
                 ))
                 
-                # Создаем начальный инвентарь
+                # Создаем начальный инвентарь (ВОДА УДАЛЕНА)
                 initial_items = [
                     (user_id, 'кофейные_зерна', 10),
                     (user_id, 'печенье', 5),
                     (user_id, 'шоколад', 2),
-                    (user_id, 'вода', 3),
                     (user_id, 'зефир', 1),
                     (user_id, 'пряник', 1)
                 ]
@@ -447,7 +446,7 @@ class DragonDatabase:
             
             if stat_column:
                 self.cursor.execute(
-                    f"UPDATE user_stats SET {stat_column} = {stat_column} + 1 WHERE user_id = ?",
+                    "UPDATE user_stats SET {} = {} + 1 WHERE user_id = ?".format(stat_column, stat_column),
                     (user_id,)
                 )
             
@@ -493,7 +492,7 @@ class DragonDatabase:
             
             # Обновляем конкретную настройку
             self.cursor.execute(
-                f"UPDATE user_settings SET {key} = ? WHERE user_id = ?",
+                "UPDATE user_settings SET {} = ? WHERE user_id = ?".format(key),
                 (value, user_id)
             )
             self.conn.commit()
@@ -842,8 +841,6 @@ class DragonDatabase:
 
 
 # ===== СОЗДАНИЕ ГЛОБАЛЬНОГО ЭКЗЕМПЛЯРА =====
-# Теперь db - это экземпляр класса DragonDatabase
-
 _db_instance = None
 
 def get_db(db_name="dragons.db"):
