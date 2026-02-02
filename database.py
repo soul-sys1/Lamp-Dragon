@@ -12,7 +12,7 @@ class DragonDatabase:
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Для доступа по имени колонок
         self.cursor = self.conn.cursor()
-        self.create_tables()
+        # Убрана автоматическая инициализация таблиц
     
     def create_tables(self):
         """Создаем таблицы, если их нет"""
@@ -827,11 +827,26 @@ class DragonDatabase:
         except Exception as e:
             print(f"Ошибка закрытия базы: {e}")
 
-# Создаем глобальный экземпляр базы данных
-db = DragonDatabase()
 
-# Функция для инициализации базы
-def init_database():
-    """Инициализация базы данных (можно вызывать при запуске)"""
-    db.create_tables()
-    print(f"База данных инициализирована. Драконов в базе: {db.get_dragon_count()}")
+# ===== ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА =====
+# Убираем автоматическое создание экземпляра при импорте
+# Вместо этого используем паттерн Singleton с ленивой инициализацией
+
+_db_instance = None
+
+def get_db(db_name="dragons.db"):
+    """Получает глобальный экземпляр базы данных (Singleton)"""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = DragonDatabase(db_name)
+        # Таблицы создаются только при первом реальном использовании
+        _db_instance.create_tables()
+        print(f"База данных инициализирована. Драконов в базе: {_db_instance.get_dragon_count()}")
+    return _db_instance
+
+def init_database(db_name="dragons.db"):
+    """Явная инициализация базы данных"""
+    return get_db(db_name)
+
+# Для обратной совместимости можно оставить db как функцию
+db = get_db  # Теперь db - это функция, а не экземпляр
