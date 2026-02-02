@@ -1,6 +1,7 @@
 """
 БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v5.0
 Хранит всех драконов в SQLite базе с новыми функциями
+БЕЗ FOREIGN KEY constraints для простоты и надежности
 """
 import sqlite3
 import json
@@ -37,20 +38,18 @@ class DragonDatabase:
                 gold INTEGER DEFAULT 50,
                 last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 dragon_data TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Таблица инвентаря (новая структура)
+        # Таблица инвентаря
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 item_name TEXT NOT NULL,
                 quantity INTEGER DEFAULT 0,
-                UNIQUE(user_id, item_name),
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                UNIQUE(user_id, item_name)
             )
         ''')
         
@@ -62,8 +61,7 @@ class DragonDatabase:
                 habit_type TEXT NOT NULL,
                 habit_time TEXT,
                 streak INTEGER DEFAULT 1,
-                last_performed TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                last_performed TIMESTAMP
             )
         ''')
         
@@ -74,8 +72,7 @@ class DragonDatabase:
                 user_id INTEGER,
                 action_type TEXT NOT NULL,
                 action_details TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -93,8 +90,7 @@ class DragonDatabase:
                 sound_effects INTEGER DEFAULT 1,
                 background_music INTEGER DEFAULT 0,
                 timezone TEXT DEFAULT 'UTC',
-                notifications_enabled INTEGER DEFAULT 1,  # НОВОЕ: общий флаг уведомлений
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                notifications_enabled INTEGER DEFAULT 1
             )
         ''')
         
@@ -108,8 +104,7 @@ class DragonDatabase:
                 total_games INTEGER DEFAULT 0,
                 total_care INTEGER DEFAULT 0,
                 total_sleep INTEGER DEFAULT 0,
-                achievements TEXT DEFAULT '[]',
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
+                achievements TEXT DEFAULT '[]'
             )
         ''')
         
@@ -160,6 +155,10 @@ class DragonDatabase:
         """Создает нового дракона"""
         try:
             if not self.dragon_exists(user_id):
+                # Сначала убедимся, что пользователь существует
+                if not self.user_exists(user_id):
+                    self.create_user(user_id, "Unknown")
+                
                 self.cursor.execute('''
                     INSERT INTO dragons 
                     (user_id, name, character_trait, level, experience, gold, dragon_data)
@@ -333,7 +332,11 @@ class DragonDatabase:
                 "SELECT level, experience FROM dragons WHERE user_id = ?",
                 (user_id,)
             )
-            level, exp = self.cursor.fetchone()
+            result = self.cursor.fetchone()
+            if not result:
+                return None
+            
+            level, exp = result
             
             # Каждый уровень требует 100 опыта
             new_level = level + (exp // 100)
@@ -410,8 +413,6 @@ class DragonDatabase:
             }
             for row in rows
         ]
-    
-    # ==== ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С BOT.PY ====
     
     def record_action(self, user_id: int, action: str) -> bool:
         """Записывает действие пользователя"""
@@ -665,14 +666,14 @@ class DragonDatabase:
     def get_dragon_count(self) -> int:
         """Получает общее количество драконов"""
         self.cursor.execute("SELECT COUNT(*) FROM dragons")
-        return self.cursor.fetchone()[0]
+        result = self.cursor.fetchone()
+        return result[0] if result else 0
     
     def get_top_dragons(self, limit: int = 10) -> List[Dict]:
         """Получает топ драконов по уровню"""
         self.cursor.execute('''
-            SELECT d.user_id, d.name, d.level, d.experience, u.username
+            SELECT d.user_id, d.name, d.level, d.experience
             FROM dragons d
-            JOIN users u ON d.user_id = u.user_id
             ORDER BY d.level DESC, d.experience DESC
             LIMIT ?
         ''', (limit,))
@@ -683,8 +684,7 @@ class DragonDatabase:
                 'user_id': row[0],
                 'name': row[1],
                 'level': row[2],
-                'experience': row[3],
-                'username': row[4]
+                'experience': row[3]
             }
             for row in rows
         ] if rows else []
@@ -769,8 +769,6 @@ class DragonDatabase:
             print(f"❌ Ошибка создания бэкапа: {e}")
             return None
     
-    # ==== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ====
-    
     def get_last_action_time(self, user_id: int, action_type: str = None) -> Optional[datetime]:
         """Получает время последнего действия"""
         try:
@@ -837,8 +835,6 @@ class DragonDatabase:
     def close(self):
         """Закрывает соединение с базой"""
         try:
-            # Очищаем старые данные перед закрытием
-            self.cleanup_old_data(30)
             self.conn.close()
             print("✅ Соединение с базой данных закрыто")
         except Exception as e:
@@ -846,7 +842,7 @@ class DragonDatabase:
 
 
 # ===== СОЗДАНИЕ ГЛОБАЛЬНОГО ЭКЗЕМПЛЯРА =====
-# Теперь db - это экземпляр класса DragonDatabase, а не функция
+# Теперь db - это экземпляр класса DragonDatabase
 
 _db_instance = None
 
@@ -864,7 +860,6 @@ def init_database(db_name="dragons.db"):
 
 
 # СОЗДАЕМ ЭКЗЕМПЛЯР СРАЗУ ПРИ ИМПОРТЕ
-# Теперь при импорте "from database import db" мы получим экземпляр класса
 db = get_db()  # Это ЭКЗЕМПЛЯР, а не функция!
 
 print(f"🐉 Модуль базы данных загружен. Текущее количество драконов: {db.get_dragon_count()}")
