@@ -3,7 +3,6 @@
 Улучшенная версия с:
 - Глубоко проработанными характерами (10 типов)
 - Менее агрессивным снижением показателей (5% в час)
-- Поддержкой часовых поясов игроков
 - Упрощенной системой помощи
 - Оптимизированным магазином (3 категории)
 """
@@ -11,7 +10,6 @@ import asyncio
 import logging
 import random
 import re
-import pytz
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Tuple
 from enum import Enum
@@ -55,16 +53,9 @@ class GameStates(StatesGroup):
     care_action = State()
     minigame_state = State()
     book_reading = State()
-    setting_timezone = State()
     help_section = State()
 
 # ==================== КЛАССЫ И УТИЛИТЫ ====================
-class TimeOfDay(Enum):
-    MORNING = (8, 9)
-    AFTERNOON = (12, 14)
-    EVENING = (19, 21)
-    NIGHT = (22, 23)
-
 class RateLimiter:
     def __init__(self):
         self.user_actions: Dict[str, datetime] = {}
@@ -289,7 +280,7 @@ class CharacterPersonality:
                 "description": (
                     "Мудрец драконьего племени! "
                     "Рождённый под древним дубом мудрости, "
-                    "он видит смысл там, где другие видят лишь поверхность."
+                    "он видит смысл там, где другие видют лишь поверхность."
                 ),
                 "features": [
                     "💭 Задаёт глубокие вопросы",
@@ -344,7 +335,7 @@ class CharacterPersonality:
             "чистюля": {
                 "morning": f"✨ {dragon_name} проверяет лапки: 'Ой, кажется, нужно почистить коготки...'",
                 "dirty": f"😷 {dragon_name} морщится: 'Я чувствую пылинку на своём левом боку!'",
-                "clean": f"🌟 {dragon_name} сверкает: 'Теперь я блещу чистото!'",
+                "clean": f"🌟 {dragon_name} сверкает: 'Теперь я блещу чистотой!'",
                 "care_time": f"🛁 {dragon_name} радостно: 'Время водных процедур! Я так это люблю!'"
             },
             "гурман": {
@@ -387,40 +378,7 @@ class CharacterPersonality:
         character_msgs = messages.get(character_trait, messages["неженка"])
         return character_msgs.get(situation, f"{dragon_name} смотрит на вас.")
 
-# ==================== УТИЛИТЫ ВРЕМЕНИ ====================
-def get_user_local_time(user_id: int) -> datetime:
-    """Получает локальное время пользователя"""
-    try:
-        settings = db.get_user_settings(user_id)
-        timezone_str = settings.get('timezone', 'UTC')
-        
-        try:
-            user_tz = pytz.timezone(timezone_str)
-        except pytz.UnknownTimeZoneError:
-            user_tz = pytz.UTC
-        
-        utc_now = datetime.now(pytz.UTC)
-        return utc_now.astimezone(user_tz)
-    except Exception as e:
-        logger.error(f"Ошибка получения времени пользователя {user_id}: {e}")
-        return datetime.now(pytz.UTC)
-
-def get_time_of_day(user_id: int) -> TimeOfDay:
-    """Определяет время суток для пользователя"""
-    local_time = get_user_local_time(user_id)
-    hour = local_time.hour
-    
-    if 8 <= hour <= 9:
-        return TimeOfDay.MORNING
-    elif 12 <= hour <= 14:
-        return TimeOfDay.AFTERNOON
-    elif 19 <= hour <= 21:
-        return TimeOfDay.EVENING
-    elif 22 <= hour <= 23 or 0 <= hour <= 5:
-        return TimeOfDay.NIGHT
-    else:
-        return TimeOfDay.AFTERNOON  # По умолчанию
-
+# ==================== УТИЛИТЫ ====================
 def validate_dragon_name(name: str) -> Tuple[bool, Optional[str]]:
     name = name.strip()
     
@@ -815,43 +773,7 @@ def get_notifications_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔕 Выключить", callback_data="notif_off")
             ],
             [
-                InlineKeyboardButton(text="⏰ Настроить время", callback_data="notif_time"),
                 InlineKeyboardButton(text="« Назад", callback_data="notif_back")
-            ]
-        ]
-    )
-    return keyboard
-
-def get_timezone_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для выбора часового пояса"""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Москва (+3)", callback_data="tz_Europe/Moscow"),
-                InlineKeyboardButton(text="Киев (+2)", callback_data="tz_Europe/Kiev")
-            ],
-            [
-                InlineKeyboardButton(text="Лондон (+0)", callback_data="tz_Europe/London"),
-                InlineKeyboardButton(text="Париж (+1)", callback_data="tz_Europe/Paris")
-            ],
-            [
-                InlineKeyboardButton(text="Нью-Йорк (-5)", callback_data="tz_America/New_York"),
-                InlineKeyboardButton(text="Лос-Анджелес (-8)", callback_data="tz_America/Los_Angeles")
-            ],
-            [
-                InlineKeyboardButton(text="Токио (+9)", callback_data="tz_Asia/Tokyo"),
-                InlineKeyboardButton(text="Пекин (+8)", callback_data="tz_Asia/Shanghai")
-            ],
-            [
-                InlineKeyboardButton(text="Сидней (+11)", callback_data="tz_Australia/Sydney"),
-                InlineKeyboardButton(text="Дубай (+4)", callback_data="tz_Asia/Dubai")
-            ],
-            [
-                InlineKeyboardButton(text="Астана (+5)", callback_data="tz_Asia/Almaty"),
-                InlineKeyboardButton(text="Екатеринбург (+5)", callback_data="tz_Asia/Yekaterinburg")
-            ],
-            [
-                InlineKeyboardButton(text="« Назад", callback_data="tz_back")
             ]
         ]
     )
@@ -1018,7 +940,7 @@ class ActionDescriptions:
             f"С каждым движением расчёски его шёрстка становится всё более блестящей и пушистой! ✨💆",
             
             f"{dragon_name} лежит на специальном столике для ухода, счастливо развалившись. "
-            f"Вы берёте расчёску и начинаете работать над его шерсткой. Дракон закрывает глаза от наслаждения, "
+            f"Вы берёте расчёску и начинаете работать над его шерстку. Дракон закрывает глаза от наслаждения, "
             f"а иногда даже подставляет особенно любимые места для расчёсывания. После процедуры он сияет как новенький! 🛁🐉",
             
             f"Сегодня {dragon_name} особенно пушистый - видимо, он хорошенько выспался. "
@@ -1123,7 +1045,6 @@ async def cmd_start(message: types.Message):
             f"<b>📋 ВОЗМОЖНОСТИ 6.0:</b>\n"
             f"• 🎭 <b>10 уникальных характеров</b> с глубокой проработкой\n"
             f"• ⏳ <b>Менее агрессивные показатели</b> (5%/час)\n"
-            f"• 🌍 <b>Поддержка часовых поясов</b> по всему миру\n"
             f"• 🛍️ <b>Упрощённый магазин</b> с 3 категориями\n"
             f"• 📚 <b>Расширенная помощь</b> по характерам\n"
             f"• ❤️ <b>Уникальные реакции</b> для каждого дракона\n\n"
@@ -1169,8 +1090,7 @@ async def cmd_help(message: types.Message, state: FSMContext):
             "<code>/start</code> - начать игру\n"
             "<code>/help</code> - эта справка\n"
             "<code>/create</code> - создать дракона\n"
-            "<code>/status</code> - статус дракона\n"
-            "<code>/timezone</code> - настроить часовой пояс\n\n"
+            "<code>/status</code> - статус дракона\n\n"
             
             "<b>😴 СОН И ОТДЫХ</b>\n"
             "<code>/sleep</code> - уложить дракона спать с разными сценами\n\n"
@@ -1224,8 +1144,7 @@ async def process_help_section(callback: types.CallbackQuery, state: FSMContext)
                 "<code>/start</code> - начать игру\n"
                 "<code>/help</code> - помощь\n"
                 "<code>/create</code> - создать дракона\n"
-                "<code>/status</code> - статус дракона\n"
-                "<code>/timezone</code> - настроить часовой пояс\n\n"
+                "<code>/status</code> - статус дракона\n\n"
                 
                 "<b>☕ КОФЕ И ЕДА:</b>\n"
                 "<code>/coffee</code> - приготовить кофе\n"
@@ -1244,8 +1163,7 @@ async def process_help_section(callback: types.CallbackQuery, state: FSMContext)
                 "<code>/inventory</code> - инвентарь\n\n"
                 
                 "<b>🔕 НАСТРОЙКИ:</b>\n"
-                "<code>/notifications</code> - уведомления\n"
-                "<code>/settings</code> - настройки\n\n"
+                "<code>/notifications</code> - уведомления\n\n"
                 
                 "━━━━━━━━━━━━━━━━━━━\n"
                 "<i>💡 Также используй кнопки меню для быстрого доступа!</i>"
@@ -1473,91 +1391,7 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("<b>❌ Произошла ошибка при создании дракона.</b>", parse_mode="HTML")
 
-# ==================== НАСТРОЙКА ВРЕМЕНИ ====================
-@dp.message(Command("timezone"))
-async def cmd_timezone(message: types.Message, state: FSMContext):
-    """Настройка часового пояса"""
-    try:
-        user_id = message.from_user.id
-        
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        # Получаем текущий часовой пояс пользователя
-        settings = db.get_user_settings(user_id)
-        current_timezone = settings.get('timezone', 'UTC')
-        
-        current_time = get_user_local_time(user_id)
-        time_str = current_time.strftime("%H:%M")
-        
-        await message.answer(
-            f"<b>⏰ НАСТРОЙКА ЧАСОВОГО ПОЯСА</b>\n\n"
-            
-            f"<i>✨ Бот использует твоё местное время для:</i>\n"
-            f"• 🌅 Утренних уведомлений (8-9 утра)\n"
-            f"• 🌙 Вечерних напоминаний (20-21 час)\n"
-            f"• 📊 Показателей в статусе\n\n"
-            
-            f"<b>Текущий часовой пояс:</b> <code>{current_timezone}</code>\n"
-            f"<b>Текущее время у тебя:</b> <code>{time_str}</code>\n\n"
-            
-            f"<i>👇 Выбери свой часовой пояс:</i>",
-            parse_mode="HTML",
-            reply_markup=get_timezone_keyboard()
-        )
-        
-        await state.set_state(GameStates.setting_timezone)
-        
-    except Exception as e:
-        logger.error(f"Ошибка в cmd_timezone: {e}")
-        await message.answer("<b>❌ Произошла ошибка при настройке времени.</b>", parse_mode="HTML")
-
-@dp.callback_query(GameStates.setting_timezone, F.data.startswith("tz_"))
-async def process_timezone(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора часового пояса"""
-    try:
-        user_id = callback.from_user.id
-        action = callback.data.replace("tz_", "")
-        
-        if action == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            await state.clear()
-            return
-        
-        # Сохраняем часовой пояс
-        timezone_str = action
-        db.update_user_setting(user_id, "timezone", timezone_str)
-        
-        # Получаем новое время пользователя
-        current_time = get_user_local_time(user_id)
-        time_str = current_time.strftime("%H:%M")
-        date_str = current_time.strftime("%d.%m.%Y")
-        
-        response = (
-            f"<b>✅ ЧАСОВОЙ ПОЯС УСТАНОВЛЕН!</b>\n\n"
-            
-            f"✨ Теперь бот будет использовать твоё местное время:\n\n"
-            f"<b>Часовой пояс:</b> <code>{timezone_str}</code>\n"
-            f"<b>Текущее время:</b> <code>{time_str}</code>\n"
-            f"<b>Дата:</b> <code>{date_str}</code>\n\n"
-            
-            f"<i>💡 Утренние уведомления будут приходить в 8-9 утра,\n"
-            f"а вечерние напоминания в 20-21 час по твоему времени.</i>"
-        )
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer("✅ Часовой пояс сохранён!")
-        await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_timezone: {e}")
-        await callback.answer("❌ Произошла ошибка при сохранении часового пояса")
-
-# ==================== СТАТУС ДРАКОНА (с улучшениями) ====================
+# ==================== СТАТУС ДРАКОНА ====================
 @dp.message(Command("status"))
 @dp.message(F.text == "🐉 Статус")
 async def cmd_status(message: types.Message):
@@ -1578,7 +1412,7 @@ async def cmd_status(message: types.Message):
         
         dragon = Dragon.from_dict(dragon_data)
         
-        # Обновляем показатели с уменьшением на 5% в час (новое!)
+        # Обновляем показатели с уменьшением на 5% в час
         dragon.update_over_time()
         
         db.update_dragon(user_id, dragon.to_dict())
@@ -1586,8 +1420,8 @@ async def cmd_status(message: types.Message):
         character_trait = dragon.character.get("основная_черта", "неженка")
         char_info = CharacterPersonality.get_character_description(character_trait)
         
-        # Получаем локальное время пользователя
-        user_time = get_user_local_time(user_id)
+        # Используем серверное время
+        now = datetime.now()
         
         status_text = (
             f"<b>{char_info['emoji']} {escape_html(dragon.name)}</b> "
@@ -1614,16 +1448,16 @@ async def cmd_status(message: types.Message):
         
         status_text += "\n"
         
-        # Характерное сообщение в зависимости от времени суток
-        time_of_day = get_time_of_day(user_id)
-        time_situations = {
-            TimeOfDay.MORNING: "morning",
-            TimeOfDay.AFTERNOON: "morning",  # Используем утренние для дня тоже
-            TimeOfDay.EVENING: "morning",
-            TimeOfDay.NIGHT: "bedtime" if character_trait == "книгочей" else "morning"
-        }
+        # Характерное сообщение
+        hour = now.hour
         
-        situation = time_situations.get(time_of_day, "morning")
+        if 6 <= hour <= 11:
+            situation = "morning"
+        elif 18 <= hour <= 23:
+            situation = "bedtime" if character_trait == "книгочей" else "morning"
+        else:
+            situation = "morning"
+            
         character_message = CharacterPersonality.get_character_message(
             character_trait, 
             situation,
@@ -1654,9 +1488,8 @@ async def cmd_status(message: types.Message):
         
         status_text += (
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🕐 <i>Ваше время:</i> <code>{user_time.strftime('%H:%M:%S')}</code>\n"
-            f"📅 <i>Дата:</i> <code>{user_time.strftime('%d.%m.%Y')}</code>\n"
-            f"📍 <i>Часовой пояс:</i> <code>{db.get_user_settings(user_id).get('timezone', 'UTC')}</code>\n"
+            f"🕐 <i>Текущее время:</i> <code>{now.strftime('%H:%M:%S')}</code>\n"
+            f"📅 <i>Дата:</i> <code>{now.strftime('%d.%m.%Y')}</code>\n"
             f"⬇️ <i>Используй кнопки ниже для ухода</i>"
         )
         
@@ -1666,7 +1499,7 @@ async def cmd_status(message: types.Message):
         logger.error(f"Ошибка в cmd_status: {e}")
         await message.answer("<b>❌ Произошла ошибка при получении статуса.</b>", parse_mode="HTML")
 
-# ==================== КОФЕ (остаётся без изменений) ====================
+# ==================== КОФЕ ====================
 @dp.message(Command("coffee"))
 @dp.message(F.text == "☕ Кофе")
 async def cmd_coffee(message: types.Message):
@@ -1743,7 +1576,7 @@ async def cmd_coffee(message: types.Message):
         logger.error(f"Ошибка в cmd_coffee: {e}")
         await message.answer("<b>❌ Произошла ошибка при приготовлении кофе.</b>", parse_mode="HTML")
 
-# ==================== МАГАЗИН (новая структура) ====================
+# ==================== МАГАЗИН ====================
 @dp.message(Command("shop"))
 @dp.message(F.text == "🛍️ Магазин")
 async def cmd_shop(message: types.Message):
@@ -1885,11 +1718,7 @@ async def process_shop_category(callback: types.CallbackQuery):
         logger.error(f"Ошибка в process_shop_category: {e}")
         await callback.answer("❌ Произошла ошибка при выборе категории")
 
-# Обработка покупок (нужно обновить обработчики для новых товаров)
-# Здесь будут обработчики для buy_* callback_data
-# Ограничу длину, остальное по аналогии...
-
-# ==================== УВЕДОМЛЕНИЯ (с учётом времени) ====================
+# ==================== УВЕДОМЛЕНИЯ ====================
 @dp.message(Command("notifications"))
 @dp.message(F.text == "🔕 Уведомления")
 async def cmd_notifications(message: types.Message):
@@ -1911,28 +1740,26 @@ async def cmd_notifications(message: types.Message):
         user_settings = db.get_user_settings(user_id)
         notifications_enabled = user_settings.get("notifications_enabled", True)
         
-        # Получаем локальное время пользователя
-        user_time = get_user_local_time(user_id)
-        time_str = user_time.strftime("%H:%M")
-        timezone = user_settings.get('timezone', 'UTC')
+        # Используем серверное время
+        now = datetime.now()
+        time_str = now.strftime("%H:%M")
         
         status_text = "🔔 <b>ВКЛЮЧЕНЫ</b>" if notifications_enabled else "🔕 <b>ВЫКЛЮЧЕНЫ</b>"
         
         await message.answer(
             f"<b>🔔 УПРАВЛЕНИЕ УВЕДОМЛЕНИЯМИ</b>\n\n"
             
-            f"<i>✨ Дракон будет присылать уведомления по твоему местному времени:</i>\n\n"
+            f"<i>✨ Дракон будет присылать уведомления по серверному времени:</i>\n\n"
             f"• 🌅 <b>Утренние напоминания</b> (8-9 утра)\n"
             f"• 🌙 <b>Вечерние напоминания</b> (20-21 час)\n"
             f"• ❤️ <b>Случайные сообщения</b> о том, что он скучает\n"
             f"• 🍪 <b>Напоминания</b> если вы давно не кормили\n\n"
             
             f"<b>Текущий статус:</b> {status_text}\n"
-            f"<b>Твоё время сейчас:</b> <code>{time_str}</code>\n"
-            f"<b>Часовой пояс:</b> <code>{timezone}</code>\n\n"
+            f"<b>Серверное время:</b> <code>{time_str}</code>\n\n"
             
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>💡 Используй «Настроить время» если время указано неверно</i>",
+            f"<i>💡 Включи уведомления чтобы не пропустить важные моменты!</i>",
             parse_mode="HTML",
             reply_markup=get_notifications_keyboard()
         )
@@ -1951,13 +1778,6 @@ async def process_notifications(callback: types.CallbackQuery):
         if action == "back":
             await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        if action == "time":
-            # Перенаправляем на настройку времени
-            await callback.message.delete()
-            await cmd_timezone(callback.message)
-            await callback.answer()
             return
         
         dragon_data = db.get_dragon(user_id)
@@ -1995,9 +1815,9 @@ async def process_notifications(callback: types.CallbackQuery):
         logger.error(f"Ошибка в process_notifications: {e}")
         await callback.answer("❌ Произошла ошибка")
 
-# ==================== УВЕДОМЛЕНИЯ С УЧЁТОМ ВРЕМЕНИ ====================
+# ==================== УВЕДОМЛЕНИЯ ====================
 async def send_notifications():
-    """Отправка умных уведомлений с учётом часового пояса"""
+    """Отправка умных уведомлений"""
     try:
         all_users = db.get_all_users_with_dragons()
         
@@ -2015,11 +1835,11 @@ async def send_notifications():
                 dragon_name = dragon.name
                 character_trait = dragon.character.get("основная_черта", "")
                 
-                # Получаем локальное время пользователя
-                user_time = get_user_local_time(user_id)
-                current_hour = user_time.hour
+                # Используем серверное время
+                now = datetime.now()
+                current_hour = now.hour
                 
-                # Утренние уведомления (8-9 утра местного времени)
+                # Утренние уведомления (8-9 утра серверного времени)
                 if 8 <= current_hour <= 9:
                     if rate_limiter.should_send_morning_notification(user_id):
                         morning_message = CharacterPersonality.get_character_message(
@@ -2031,7 +1851,7 @@ async def send_notifications():
                         await bot.send_message(user_id, morning_message)
                         continue
                 
-                # Вечерние уведомления (20-21 час местного времени)
+                # Вечерние уведомления (20-21 час серверного времени)
                 elif 20 <= current_hour <= 21:
                     if random.random() < 0.3:
                         evening_situations = ["bedtime", "reading_time", "thinking"]
@@ -2082,10 +1902,6 @@ async def send_notifications():
         logger.error(f"Ошибка в send_notifications: {e}")
 
 # ==================== ОБНОВЛЁННЫЕ ОБРАБОТЧИКИ ДЕЙСТВИЙ ====================
-# Все обработчики действий (hug, care, feed, sleep, games) остаются без изменений,
-# но теперь используют CharacterPersonality для характерных сообщений
-
-# Пример для обнимашек:
 @dp.message(Command("hug"))
 @dp.message(F.text == "🤗 Обнять")
 async def cmd_hug(message: types.Message):
@@ -2166,8 +1982,6 @@ async def cmd_hug(message: types.Message):
     except Exception as e:
         logger.error(f"Ошибка в cmd_hug: {e}")
         await message.answer("<b>❌ Произошла ошибка при обнимашках.</b>", parse_mode="HTML")
-
-# Аналогично обновить другие обработчики с добавлением характерных сообщений...
 
 # ==================== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ====================
 @dp.error()
