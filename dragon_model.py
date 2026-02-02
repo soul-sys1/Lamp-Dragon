@@ -1,11 +1,7 @@
 """
 МОДЕЛЬ ДРАКОНА v5.0
-Содержит все данные и логику дракона с новыми функциями:
-- Больше показателей и навыков
-- Новые сладости
-- Расширенная система ухода
-- Поддержка мини-игр
-- Улучшенная система сна
+Содержит все данные и логику дракона с новыми функциями
+ИСПРАВЛЕННЫЙ: проценты теперь всегда целые числа
 """
 import random
 from datetime import datetime, timedelta
@@ -17,7 +13,7 @@ class Dragon:
         self.name = name
         self.created_at = datetime.now().isoformat()
         
-        # ОСНОВНЫЕ ПОКАЗАТЕЛИ (0-100)
+        # ОСНОВНЫЕ ПОКАЗАТЕЛИ (0-100, всегда целые числа)
         self.stats = {
             "кофе": 70,          # Хочет кофе
             "сон": 30,           # Хочет спать
@@ -29,13 +25,13 @@ class Dragon:
             "здоровье": 95       # Общее здоровье
         }
         
-        # НАВЫКИ ДРАКОНА (0-100)
+        # НАВЫКИ ДРАКОНА (0-100, всегда целые числа)
         self.skills = {
             "кофейное_мастерство": 10,      # Навык приготовления/понимания кофе
             "литературный_вкус": 5,         # Любовь и понимание книг
             "игровая_эрудиция": 5,          # Навык в играх
-            "вязальная_сноровка": 0,        # Навык рукоделия (для будущих обновлений)
-            "кулинарное_искусство": 0,      # Навык приготовления еда
+            "вязальная_сноровка": 0,        # Навык рукоделия
+            "кулинарное_искусство": 0,      # Навык приготовления еды
             "музыкальный_слух": 0,          # Чувство ритма и музыки
             "артистизм": 0,                  # Творческие способности
             "атлетичность": 0,              # Физическая форма
@@ -95,6 +91,9 @@ class Dragon:
             "bath_unlocked": False,
             "toy_enjoyment": 0  # Насколько дракону нравится игрушка
         }
+        
+        # Флаг для предотвращения слишком частых обновлений
+        self._last_stats_update = datetime.now()
     
     def _generate_character(self) -> Dict:
         """Генерирует случайный характер дракона"""
@@ -167,7 +166,7 @@ class Dragon:
             "активность": random.choice(activities),
             "время_суток": random.choice(["утро", "день", "вечер", "ночь"]),
             "погода": random.choice(["солнечно", "дождливо", "снежно", "ветрено"]),
-            "музыка": random.choice(["классика", "поп", "рок", "джаз", "инструментальная"])
+            "музика": random.choice(["классика", "поп", "рок", "джаз", "инструментальная"])
         }
         
         # ОСОБЫЕ ПРЕДПОЧТЕНИЯ ПО ХАРАКТЕРУ
@@ -181,7 +180,7 @@ class Dragon:
             "чистюля": {"активность": "уход", "цвет": "белый"},
             "лентяй": {"активность": "отдых", "время_суток": "день"},
             "энерджайзер": {"активность": "спорт", "время_суток": "утро"},
-            "философ": {"активность": "размышления", "музыка": "инструментальная"},
+            "философ": {"активность": "размышления", "музика": "инструментальная"},
             "артист": {"активность": "рисование", "цвет": "фиолетовый"},
             "спортсмен": {"активность": "прогулки", "время_суток": "утро"},
             "исследователь": {"активность": "исследования", "жанр_книг": "научная фантастика"},
@@ -203,117 +202,131 @@ class Dragon:
         return favorites
     
     def update_over_time(self):
-        """Обновляет показатели со временем"""
+        """Обновляет показатели со временем - ВСЕГДА ЦЕЛЫЕ ЧИСЛА"""
         try:
             now = datetime.now()
             last_update = datetime.fromisoformat(self.last_update)
             hours_passed = (now - last_update).total_seconds() / 3600
             
-            if hours_passed < 0.5:  # Меньше 30 минут
+            if hours_passed < 0.1:  # Меньше 6 минут - не обновляем
                 return
             
-            # СКОРОСТИ ИЗМЕНЕНИЯ ПОКАЗАТЕЛЕЙ
+            # УМЕНЬШЕННЫЕ СКОРОСТИ ИЗМЕНЕНИЯ ПОКАЗАТЕЛЕЙ
+            # Теперь изменения гораздо медленнее
             decay_rates = {
-                "кофе": 4,           # 4% в час
-                "энергия": 3,        # 3% в час
-                "пушистость": 1,     # 1% в час
-                "чистота": 1,        # 1% в час
-                "здоровье": 0.5      # 0.5% в час
+                "кофе": 1.5,           # 1.5% в час (было 4)
+                "энергия": 1.2,        # 1.2% в час (было 3)
+                "пушистость": 0.5,     # 0.5% в час (было 1)
+                "чистота": 0.5,        # 0.5% в час (было 1)
+                "здоровье": 0.2        # 0.2% в час (было 0.5)
             }
             
             growth_rates = {
-                "сон": 2.5,          # 2.5% в час
-                "аппетит": 2,        # 2% в час,
+                "сон": 1.0,            # 1.0% в час (было 2.5)
+                "аппетит": 0.8,        # 0.8% в час (было 2)
             }
             
-            # ПРИМЕНЯЕМ ИЗМЕНЕНИЯ
+            # ПРИМЕНЯЕМ ИЗМЕНЕНИЯ И ОКРУГЛЯЕМ ДО ЦЕЛЫХ
             for stat, rate in decay_rates.items():
                 if stat in self.stats:
-                    self.stats[stat] = max(0, self.stats[stat] - rate * hours_passed)
+                    change = round(rate * hours_passed, 1)  # Округляем до 1 знака
+                    new_value = max(0, self.stats[stat] - change)
+                    self.stats[stat] = int(new_value)  # Приводим к целому числу
             
             for stat, rate in growth_rates.items():
                 if stat in self.stats:
-                    self.stats[stat] = min(100, self.stats[stat] + rate * hours_passed)
+                    change = round(rate * hours_passed, 1)  # Округляем до 1 знака
+                    new_value = min(100, self.stats[stat] + change)
+                    self.stats[stat] = int(new_value)  # Приводим к целому числу
             
-            # НАСТРОЕНИЕ ЗАВИСИТ ОТ ВСЕХ ФАКТОРОВ
+            # НАСТРОЕНИЕ ЗАВИСИТ ОТ ВСЕХ ФАКТОРОВ - всегда целое число
             mood_changes = []
             
             # Положительные факторы
             if self.stats["кофе"] > 80:
-                mood_changes.append(5)
+                mood_changes.append(3)
             if self.stats["энергия"] > 80:
-                mood_changes.append(5)
+                mood_changes.append(3)
             if self.stats["пушистость"] > 80:
-                mood_changes.append(3)
+                mood_changes.append(2)
             if self.stats["чистота"] > 80:
-                mood_changes.append(3)
+                mood_changes.append(2)
             if self.stats["здоровье"] > 90:
-                mood_changes.append(5)
+                mood_changes.append(3)
             
             # Отрицательные факторы
             if self.stats["кофе"] < 20:
-                mood_changes.append(-10)
+                mood_changes.append(-5)
             if self.stats["сон"] > 80:
-                mood_changes.append(-8)
+                mood_changes.append(-4)
             if self.stats["аппетит"] > 80:
-                mood_changes.append(-8)
+                mood_changes.append(-4)
             if self.stats["энергия"] < 20:
-                mood_changes.append(-10)
+                mood_changes.append(-5)
             if self.stats["пушистость"] < 30:
-                mood_changes.append(-5)
+                mood_changes.append(-3)
             if self.stats["чистота"] < 30:
-                mood_changes.append(-5)
+                mood_changes.append(-3)
             if self.stats["здоровье"] < 50:
-                mood_changes.append(-15)
+                mood_changes.append(-8)
             
             # Учитываем характер
             main_trait = self.character.get("основная_черта", "")
             if main_trait == "неженка" and self.stats["настроение"] < 50:
-                mood_changes.append(-5)  # Неженка сильнее грустит
+                mood_changes.append(-3)  # Неженка сильнее грустит
             elif main_trait == "энерджайзер" and self.stats["энергия"] < 30:
-                mood_changes.append(-10)  # Энерджайзеру без энергии очень плохо
+                mood_changes.append(-5)  # Энерджайзеру без энергии очень плохо
             
-            # Применяем изменения настроения
+            # Применяем изменения настроения - округляем до целого
             total_mood_change = sum(mood_changes)
-            self.stats["настроение"] = max(0, min(100, self.stats["настроение"] + total_mood_change))
+            new_mood = max(0, min(100, self.stats["настроение"] + total_mood_change))
+            self.stats["настроение"] = int(new_mood)
             
-            # ЗДОРОВЬЕ ЗАВИСИТ ОТ ОСНОВНЫХ ПОКАЗАТЕЛЕЙ
+            # ЗДОРОВЬЕ ЗАВИСИТ ОТ ОСНОВНЫХ ПОКАЗАТЕЛЕЙ - всегда целое число
             health_factors = []
+            
+            # Отрицательные влияния
             if self.stats["кофе"] < 10:
-                health_factors.append(-5)
+                health_factors.append(-3)
             if self.stats["сон"] > 95:
-                health_factors.append(-3)
+                health_factors.append(-2)
             if self.stats["аппетит"] > 95:
-                health_factors.append(-3)
+                health_factors.append(-2)
             if self.stats["настроение"] < 10:
-                health_factors.append(-8)
-            if self.stats["энергия"] < 5:
                 health_factors.append(-5)
-            if self.stats["чистота"] < 20:
+            if self.stats["энергия"] < 5:
                 health_factors.append(-3)
+            if self.stats["чистота"] < 20:
+                health_factors.append(-2)
             
             # Положительное влияние хороших показателей
-            if self.stats["кофе"] > 50:
+            if self.stats["кофе"] > 50 and self.stats["кофе"] < 80:
                 health_factors.append(1)
-            if self.stats["сон"] < 50:
+            if self.stats["сон"] < 70:
                 health_factors.append(1)
-            if self.stats["аппетит"] < 50:
+            if self.stats["аппетит"] < 70:
                 health_factors.append(1)
             if self.stats["настроение"] > 80:
-                health_factors.append(3)
-            if self.stats["энергия"] > 50:
                 health_factors.append(2)
+            if self.stats["энергия"] > 50 and self.stats["энергия"] < 80:
+                health_factors.append(1)
             if self.stats["чистота"] > 80:
-                health_factors.append(2)
+                health_factors.append(1)
             
             total_health_change = sum(health_factors)
-            self.stats["здоровье"] = max(0, min(100, self.stats["здоровье"] + total_health_change))
+            new_health = max(0, min(100, self.stats["здоровье"] + total_health_change))
+            self.stats["здоровье"] = int(new_health)
+            
+            # ОГРАНИЧИВАЕМ ВСЕ ПОКАЗАТЕЛИ ЦЕЛЫМИ ЧИСЛАМИ ОТ 0 ДО 100
+            for stat in self.stats:
+                self.stats[stat] = max(0, min(100, int(self.stats[stat])))
             
             self.last_update = now.isoformat()
             
         except Exception as e:
+            # В случае ошибки просто обновляем время
             self.last_update = datetime.now().isoformat()
-            print(f"Ошибка в update_over_time: {e}")
+            print(f"⚠️ Ошибка в update_over_time: {e}")
     
     def add_experience(self, amount: int) -> int:
         """Добавляет опыт и проверяет повышение уровня"""
@@ -327,9 +340,9 @@ class Dragon:
                 levels_gained += 1
                 
                 # ПРИ ПОВЫШЕНИИ УРОВНЯ
-                # Улучшаем все показатели немного
-                for stat in self.stats:
-                    if stat not in ["кофе", "сон", "аппетит"]:  # Эти не улучшаем
+                # Улучшаем все показатели немного (кроме кофе, сна, аппетита)
+                for stat in ["настроение", "энергия", "пушистость", "чистота", "здоровье"]:
+                    if stat in self.stats:
                         self.stats[stat] = min(100, self.stats[stat] + 5)
                 
                 # Улучшаем 2 случайных навыка
@@ -347,7 +360,7 @@ class Dragon:
             
             return levels_gained
         except Exception as e:
-            print(f"Ошибка в add_experience: {e}")
+            print(f"⚠️ Ошибка в add_experience: {e}")
             return 0
     
     def _check_level_achievements(self):
@@ -383,7 +396,6 @@ class Dragon:
         
         self.achievements.extend(achievements_to_add)
     
-    # ==== ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ СОВМЕСТИМОСТИ ====
     def apply_action(self, action_type: str, action_data: Dict = None) -> Dict:
         """Применяет действие к дракону и возвращает результат"""
         if action_data is None:
@@ -400,7 +412,7 @@ class Dragon:
         }
         
         try:
-            # ОСНОВНЫЕ ЭФФЕКТЫ ДЕЙСТВИЙ (обновленные для совместимости)
+            # ОСНОВНЫЕ ЭФФЕКТЫ ДЕЙСТВИЙ (упрощенные, целые числа)
             base_effects = {
                 "кофе": {
                     "кофе": 40,
@@ -457,7 +469,6 @@ class Dragon:
                     "настроение": 40,
                     "энергия": 20
                 },
-                # ==== ДОПОЛНИТЕЛЬНЫЕ ДЕЙСТВИЯ ДЛЯ BOT.PY ====
                 "уход": {  # Для общего ухода
                     "пушистость": 25,
                     "чистота": 30,
@@ -481,20 +492,22 @@ class Dragon:
                 "уход": ["артистизм"]
             }
             
-            # ПРИМЕНЯЕМ БАЗОВЫЕ ЭФФЕКТЫ
+            # ПРИМЕНЯЕМ БАЗОВЫЕ ЭФФЕКТЫ (всегда целые числа)
             if action_type in base_effects:
                 for stat, change in base_effects[action_type].items():
                     if stat in self.stats:
                         old_value = self.stats[stat]
                         if stat == "сон" or stat == "аппетит":
                             # Сон и аппетит уменьшаются при действиях
-                            self.stats[stat] = max(0, old_value + change)
+                            new_value = max(0, old_value + change)
                         else:
                             # Остальные показатели увеличиваются
-                            self.stats[stat] = min(100, old_value + change)
+                            new_value = min(100, old_value + change)
+                        
+                        self.stats[stat] = int(new_value)  # Приводим к целому
                         result["stat_changes"][stat] = self.stats[stat] - old_value
                 
-                # УЛУЧШАЕМ НАВЫКИ
+                # УЛУЧШАЕМ НАВЫКИ (целые числа)
                 if action_type in skill_improvements:
                     for skill in skill_improvements[action_type]:
                         if skill in self.skills:
@@ -503,7 +516,7 @@ class Dragon:
                             self.skills[skill] = min(100, old_skill + improvement)
                             result["skill_changes"][skill] = self.skills[skill] - old_skill
                 
-                # ДАЕМ ОПЫТ И ЗОЛОТО
+                # ДАЕМ ОПЫТ И ЗОЛОТО (целые числа)
                 exp_gained = random.randint(10, 25)
                 gold_gained = random.randint(5, 15)
                 
@@ -518,14 +531,17 @@ class Dragon:
                 
                 # ПРОВЕРЯЕМ ЛЮБИМЫЕ ВЕЩИ
                 if action_data.get("item_type") == self.favorites.get("сладость"):
-                    result["stat_changes"]["настроение"] = result["stat_changes"].get("настроение", 0) + 20
+                    mood_bonus = 20
+                    self.stats["настроение"] = min(100, self.stats["настроение"] + mood_bonus)
+                    result["stat_changes"]["настроение"] = result["stat_changes"].get("настроение", 0) + mood_bonus
                     result["special_effect"] = "favorite"
+                    
                     if result["message"]:
-                        result["message"] += f"\n🎉 {self.name} обожает {action_data['item_type']}! +20 к настроению!"
+                        result["message"] += f"\n🎉 {self.name} обожает {action_data['item_type']}! +{mood_bonus} к настроению!"
                     else:
-                        result["message"] = f"🎉 {self.name} обожает {action_data['item_type']}! +20 к настроению!"
+                        result["message"] = f"🎉 {self.name} обожает {action_data['item_type']}! +{mood_bonus} к настроению!"
                 
-                # ХАРАКТЕРНЫЕ БОНУСЫ
+                # ХАРАКТЕРНЫЕ БОНУСЫ (целые числа)
                 main_trait = self.character.get("основная_черта", "")
                 character_bonuses = {
                     "кофеман": {"action": "кофе", "bonus": {"настроение": 15, "кофейное_мастерство": 5}},
@@ -543,10 +559,12 @@ class Dragon:
                     if main_trait == trait and bonus_info["action"] in action_type:
                         for stat, bonus in bonus_info["bonus"].items():
                             if stat in self.stats:
-                                self.stats[stat] = min(100, max(0, self.stats[stat] + bonus))
+                                new_value = max(0, min(100, self.stats[stat] + bonus))
+                                self.stats[stat] = int(new_value)  # Приводим к целому
                                 result["stat_changes"][stat] = result["stat_changes"].get(stat, 0) + bonus
                             elif stat in self.skills:
-                                self.skills[stat] = min(100, self.skills[stat] + bonus)
+                                new_value = min(100, self.skills[stat] + bonus)
+                                self.skills[stat] = int(new_value)  # Приводим к целому
                                 result["skill_changes"][stat] = result["skill_changes"].get(stat, 0) + bonus
                         
                         trait_name = main_trait.capitalize()
@@ -573,6 +591,9 @@ class Dragon:
                 # ЗАПИСЫВАЕМ ПОСЛЕДНЕЕ ДЕЙСТВИЕ
                 self.last_actions[action_type] = datetime.now().isoformat()
                 
+                # Обновляем время последнего обновления
+                self.last_update = datetime.now().isoformat()
+                
             else:
                 result["success"] = False
                 result["message"] = f"Неизвестное действие: {action_type}"
@@ -580,12 +601,12 @@ class Dragon:
         except Exception as e:
             result["success"] = False
             result["message"] = f"Ошибка при выполнении действия: {str(e)}"
-            print(f"Ошибка в apply_action: {e}")
+            print(f"⚠️ Ошибка в apply_action: {e}")
         
         return result
     
     def apply_minigame_result(self, game_type: str, won: bool, score: int = 0) -> Dict:
-        """Применяет результат мини-игры"""
+        """Применяет результат мини-игры (всегда целые числа)"""
         result = {
             "success": True,
             "message": "",
@@ -595,7 +616,7 @@ class Dragon:
         }
         
         try:
-            # БАЗОВЫЕ НАГРАДЫ ЗА ИГРЫ
+            # БАЗОВЫЕ НАГРАДЫ ЗА ИГРЫ (целые числа)
             if won:
                 gold = random.randint(10, 30)
                 mood_bonus = random.randint(15, 30)
@@ -609,11 +630,11 @@ class Dragon:
                 
                 self.action_stats["total_minigames_won"] += 1
                 
-                # Улучшаем игровые навыки
+                # Улучшаем игровые навыки (целые числа)
                 self.skills["игровая_эрудиция"] = min(100, self.skills["игровая_эрудиция"] + 3)
                 result["skill_changes"]["игровая_эрудиция"] = 3
                 
-                # Особые бонусы для разных игр
+                # Особые бонусы для разных игр (целые числа)
                 if game_type == "coffee_art":
                     self.skills["кофейное_мастерство"] = min(100, self.skills["кофейное_мастерство"] + 5)
                     self.skills["артистизм"] = min(100, self.skills["артистизм"] + 3)
@@ -640,7 +661,7 @@ class Dragon:
                 
                 result["message"] = "😔 В следующий раз повезёт больше!"
             
-            # Бонус для игрика
+            # Бонус для игрика (целые числа)
             if self.character.get("основная_черта") == "игрик":
                 bonus = 15 if won else -5
                 self.stats["настроение"] = min(100, max(0, self.stats["настроение"] + bonus))
@@ -654,10 +675,13 @@ class Dragon:
             # Обновляем время последней игры
             self.last_actions["game"] = datetime.now().isoformat()
             
+            # Обновляем время последнего обновления
+            self.last_update = datetime.now().isoformat()
+            
         except Exception as e:
             result["success"] = False
             result["message"] = f"Ошибка при обработке результата игры: {str(e)}"
-            print(f"Ошибка в apply_minigame_result: {e}")
+            print(f"⚠️ Ошибка в apply_minigame_result: {e}")
         
         return result
     
@@ -700,19 +724,23 @@ class Dragon:
             return True, ""
             
         except Exception as e:
-            print(f"Ошибка в can_perform_action: {e}")
+            print(f"⚠️ Ошибка в can_perform_action: {e}")
             return True, ""  # В случае ошибки разрешаем действие
     
     def get_status_summary(self) -> Dict:
         """Возвращает сводку статуса дракона"""
         self.update_over_time()
         
+        # Убедимся, что все показатели целые числа
+        for stat in self.stats:
+            self.stats[stat] = int(self.stats[stat])
+        
         return {
             "name": self.name,
             "level": self.level,
             "character": self.character.get("основная_черта", "неженка"),
             "stats": self.stats.copy(),
-            "skills": {k: v for k, v in self.skills.items() if v > 0},
+            "skills": {k: int(v) for k, v in self.skills.items() if v > 0},
             "gold": self.gold,
             "experience": f"{self.experience}/100",
             "favorites": self.favorites,
@@ -746,12 +774,16 @@ class Dragon:
     
     def to_dict(self) -> Dict:
         """Преобразует объект в словарь для сохранения"""
+        # Убедимся, что все значения целые числа перед сохранением
+        stats = {k: int(v) for k, v in self.stats.items()}
+        skills = {k: int(v) for k, v in self.skills.items()}
+        
         return {
             "name": self.name,
             "created_at": self.created_at,
-            "stats": self.stats,
+            "stats": stats,  # Уже целые числа
             "character": self.character,
-            "skills": self.skills,
+            "skills": skills,  # Уже целые числа
             "level": self.level,
             "experience": self.experience,
             "gold": self.gold,
@@ -772,8 +804,9 @@ class Dragon:
             dragon = cls(data.get("name", "Дракоша"))
             dragon.created_at = data.get("created_at", datetime.now().isoformat())
             
-            # Статистика с проверкой
-            dragon.stats = data.get("stats", dragon.stats.copy())
+            # Статистика с проверкой и приведением к целым числам
+            stats = data.get("stats", dragon.stats.copy())
+            dragon.stats = {k: int(v) if isinstance(v, (int, float)) else v for k, v in stats.items()}
             
             # Характер с проверкой
             character = data.get("character", {})
@@ -787,8 +820,9 @@ class Dragon:
                 character["описание"] = dragon._get_trait_description(character.get("основная_черта", "неженка"))
             dragon.character = character
             
-            # Навыки с проверкой
-            dragon.skills = data.get("skills", dragon.skills.copy())
+            # Навыки с проверкой и приведением к целым числам
+            skills = data.get("skills", dragon.skills.copy())
+            dragon.skills = {k: int(v) if isinstance(v, (int, float)) else v for k, v in skills.items()}
             
             # Прогресс
             dragon.level = data.get("level", 1)
@@ -823,5 +857,5 @@ class Dragon:
             return dragon
             
         except Exception as e:
-            print(f"Ошибка при создании дракона из словаря: {e}")
+            print(f"⚠️ Ошибка при создании дракона из словаря: {e}")
             return cls(data.get("name", "Дракоша") if isinstance(data, dict) else "Дракоша")
