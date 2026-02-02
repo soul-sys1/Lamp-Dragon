@@ -1,17 +1,19 @@
 """
-🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.1
-Исправленная версия с исправлением всех ошибок:
-- Рабочий инвентарь и магазин
-- Рабочие сказки
-- Унифицированные названия предметов
-- Все обработчики кнопок
+🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.1.1
+Исправленная версия с исправлением всех обнаруженных ошибок:
+- Исправлен TypeError в инвентаре
+- Исправлена ошибка 'title' в чтении сказок
+- Улучшено управление состояниями и ошибками
+- Исправлены проблемы с БД
+- Унифицированы названия предметов
 """
 import asyncio
 import logging
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List, Tuple
+import traceback
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -23,6 +25,7 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.exceptions import TelegramAPIError
 
 # Импортируем модули
 import config
@@ -30,10 +33,12 @@ from database import db
 from dragon_model import Dragon
 from books import get_random_book, get_all_genres
 
-# Настройка логирования
+# Настройка логирования в UTC
+logging.Formatter.converter = lambda *args: datetime.now(timezone.utc).timetuple()
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S %Z'
 )
 logger = logging.getLogger(__name__)
 
@@ -69,7 +74,7 @@ class RateLimiter:
         self.user_last_interaction: Dict[int, datetime] = {}
     
     def can_perform_action(self, user_id: int, action: str, cooldown_seconds: int = 30) -> bool:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         key = f"{user_id}_{action}"
         
         if key in self.user_actions:
@@ -82,7 +87,7 @@ class RateLimiter:
         return True
     
     def record_feeding(self, user_id: int):
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if user_id not in self.user_feeding_schedule:
             self.user_feeding_schedule[user_id] = []
         
@@ -94,7 +99,7 @@ class RateLimiter:
         if user_id not in self.user_feeding_schedule:
             return True
         
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         today = now.date()
         
         if not self.user_feeding_schedule[user_id]:
@@ -112,7 +117,7 @@ class RateLimiter:
         return False
     
     def clear_old_entries(self):
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         month_ago = now - timedelta(days=30)
         
         keys_to_delete = [k for k, v in self.user_actions.items() if v < month_ago]
@@ -268,7 +273,7 @@ class CharacterPersonality:
                 "name": "⚡ Энерджайзер",
                 "description": (
                     "Живая электростанция драконьего мира! "
-                    "Рождённый во время грозу, он накопил столько энергии, "
+                    "Рождённый во время грозы, он накопил столько энергии, "
                     "что может осветить целый город."
                 ),
                 "features": [
@@ -373,7 +378,7 @@ class CharacterPersonality:
                 "active": f"🏃 {dragon_name} носится по комнате: 'Не могу усидеть на месте! Давай что-нибудь сделаем!'",
                 "coffee_boost": f"💥 {dragon_name} после кофе: 'Вау! Теперь я могу летать без крыльев!'",
                 "evening": f"🌙 {dragon_name} всё ещё активен: 'Уже вечер? А я только разогнался!'",
-                "hug_time": f"⚡ {dragon_name} энергично обнимает: 'Объятия заряжают ещё больше!'"
+                "hug_time": f"⚡ {dragon_name} энергично обнимает вас: 'Объятия заряжают ещё больше!'"
             },
             "философ": {
                 "morning": f"🤔 {dragon_name} задумчиво: 'Каждое утро - это новая глава в книге жизни...'",
@@ -667,7 +672,7 @@ def get_coffee_snack_keyboard(inventory: dict) -> InlineKeyboardMarkup:
         "donut": "🍩 Пончик"
     }
     
-    # Маппинг callback-данных на названия в инвентаре
+    # Унифицированный маппинг callback-данных на названия в инвентаре
     inventory_map = {
         "cookie_raisin": "cookie",
         "chocolate_bar": "chocolate",
@@ -682,9 +687,9 @@ def get_coffee_snack_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     for snack_key, snack_name in snack_items.items():
         inv_key = inventory_map.get(snack_key, snack_key)
         count = inventory.get(inv_key, 0)
-        if count > 0:
+        if isinstance(count, (int, float)) and count > 0:
             row.append(InlineKeyboardButton(
-                text=f"{snack_name} ×{count}", 
+                text=f"{snack_name} ×{int(count)}", 
                 callback_data=f"snack_{snack_key}"
             ))
             if len(row) == 2:
@@ -750,20 +755,20 @@ def get_care_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     row2.append(InlineKeyboardButton(text="🦷 Почистить зубы", callback_data="care_clean_teeth"))
     keyboard.inline_keyboard.append(row2)
     
-    # Действия с предметами из магазина
+    # Действия с предметами из магазина (используем новые названия)
     row3 = []
-    if inventory.get("dragon_brush", 0) > 0 or inventory.get("brush", 0) > 0:
+    if inventory.get("dragon_brush", 0) > 0:
         row3.append(InlineKeyboardButton(text="💆 Расчесать шерстку", callback_data="care_brush_fur"))
-    if inventory.get("magic_shampoo", 0) > 0 or inventory.get("shampoo", 0) > 0:
+    if inventory.get("magic_shampoo", 0) > 0:
         row3.append(InlineKeyboardButton(text="🧴 Искупать с шампунем", callback_data="care_bath_shampoo"))
     
     if row3:
         keyboard.inline_keyboard.append(row3)
     
     row4 = []
-    if inventory.get("golden_scissors", 0) > 0 or inventory.get("scissors", 0) > 0:
+    if inventory.get("golden_scissors", 0) > 0:
         row4.append(InlineKeyboardButton(text="✂️ Подстричь когти ножницами", callback_data="care_trim_nails_scissors"))
-    if inventory.get("plush_dragon", 0) > 0 or inventory.get("toy", 0) > 0:
+    if inventory.get("plush_dragon", 0) > 0:
         row4.append(InlineKeyboardButton(text="🧸 Играть с игрушкой", callback_data="care_play_toy"))
     
     if row4:
@@ -816,9 +821,9 @@ def get_feed_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     for snack_key, snack_name in snack_items.items():
         inv_key = inventory_map.get(snack_key, snack_key)
         count = inventory.get(inv_key, 0)
-        if count > 0:
+        if isinstance(count, (int, float)) and count > 0:
             row.append(InlineKeyboardButton(
-                text=f"{snack_name} ×{count}", 
+                text=f"{snack_name} ×{int(count)}", 
                 callback_data=f"feed_{snack_key}"
             ))
             if len(row) == 2:
@@ -1045,6 +1050,51 @@ class ActionDescriptions:
         
         return random.choice(scenes)
 
+# ==================== МИДЛВАРЫ И ОБРАБОТЧИКИ ОШИБОК ====================
+async def error_handler(update: types.Update, exception: Exception):
+    """Глобальный обработчик ошибок"""
+    try:
+        if isinstance(exception, TelegramAPIError):
+            logger.error(f"Telegram API error: {exception}")
+        else:
+            logger.error(f"Unhandled exception: {exception}\n{traceback.format_exc()}")
+        
+        # Попытаемся отправить сообщение об ошибке пользователю
+        try:
+            if update and hasattr(update, 'message') and update.message:
+                await update.message.answer(
+                    "<b>⚠️ Произошла непредвиденная ошибка.</b>\n\n"
+                    "<i>Пожалуйста, попробуйте ещё раз или используйте команду /start</i>",
+                    parse_mode="HTML",
+                    reply_markup=get_main_keyboard()
+                )
+        except:
+            pass
+    except Exception as e:
+        logger.error(f"Error in error_handler: {e}")
+    
+    return True
+
+@dp.message(Command("cancel"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    """Отмена текущего действия и выход из состояния"""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer(
+            "<b>ℹ️ Нет активных действий для отмены.</b>",
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
+        return
+    
+    await state.clear()
+    await message.answer(
+        "<b>✅ Действие отменено.</b>\n\n"
+        "<i>Вы можете начать заново с помощью кнопок меню.</i>",
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard()
+    )
+
 # ==================== НАЧАЛЬНЫЙ ЭКРАН И БАЗОВЫЕ КОМАНДЫ ====================
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -1065,7 +1115,7 @@ async def cmd_start(message: types.Message):
             
             f"<b>🐾 Тебе выпала честь стать хранителем одного из них!</b>\n\n"
             
-            f"<b>📋 ВОЗМОЖНОСТИ 6.1:</b>\n"
+            f"<b>📋 ВОЗМОЖНОСТИ 6.1.1:</b>\n"
             f"• 🎭 <b>10 уникальных характеров</b> с глубокой проработкой\n"
             f"• ⏳ <b>Менее агрессивные показатели</b> (5%/час)\n"
             f"• 🛍️ <b>Рабочий магазин</b> с 3 категориями\n"
@@ -1107,13 +1157,14 @@ async def cmd_help(message: types.Message, state: FSMContext):
         has_dragon = db.dragon_exists(user_id)
         
         help_text = (
-            "<b>📚 КОМАНДЫ И ХАРАКТЕРЫ (v6.1)</b>\n\n"
+            "<b>📚 КОМАНДЫ И ХАРАКТЕРЫ (v6.1.1)</b>\n\n"
             
             "<b>🐉 ОСНОВНЫЕ КОМАНДЫ:</b>\n"
             "<code>/start</code> - начать игру\n"
             "<code>/help</code> - эта справка\n"
             "<code>/create</code> - создать дракона\n"
-            "<code>/status</code> - статус дракона\n\n"
+            "<code>/status</code> - статус дракона\n"
+            "<code>/cancel</code> - отменить текущее действие\n\n"
             
             "<b>😴 СОН И ОТДЫХ</b>\n"
             "<code>/sleep</code> - уложить дракона спать с разными сценами\n\n"
@@ -1167,7 +1218,8 @@ async def process_help_section(callback: types.CallbackQuery, state: FSMContext)
                 "<code>/start</code> - начать игру\n"
                 "<code>/help</code> - помощь\n"
                 "<code>/create</code> - создать дракона\n"
-                "<code>/status</code> - статус дракона\n\n"
+                "<code>/status</code> - статус дракона\n"
+                "<code>/cancel</code> - отменить текущее действие\n\n"
                 
                 "<b>☕ КОФЕ И ЕДА:</b>\n"
                 "<code>/coffee</code> - приготовить кофе\n"
@@ -1443,8 +1495,8 @@ async def cmd_status(message: types.Message):
         character_trait = dragon.character.get("основная_черта", "неженка")
         char_info = CharacterPersonality.get_character_description(character_trait)
         
-        # Используем серверное время
-        now = datetime.now()
+        # Используем серверное время в UTC
+        now = datetime.now(timezone.utc)
         
         status_text = (
             f"<b>{char_info['emoji']} {escape_html(dragon.name)}</b> "
@@ -1511,7 +1563,7 @@ async def cmd_status(message: types.Message):
         
         status_text += (
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🕐 <i>Текущее время:</i> <code>{now.strftime('%H:%M:%S')}</code>\n"
+            f"🕐 <i>Текущее время (UTC):</i> <code>{now.strftime('%H:%M:%S')}</code>\n"
             f"📅 <i>Дата:</i> <code>{now.strftime('%d.%m.%Y')}</code>\n"
             f"⬇️ <i>Используй кнопки ниже для ухода</i>"
         )
@@ -1789,7 +1841,7 @@ async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(Command("inventory"))
 @dp.message(F.text == "📦 Инвентарь")
 async def cmd_inventory(message: types.Message, state: FSMContext):
-    """Показать инвентарь"""
+    """Показать инвентарь - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         user_id = message.from_user.id
         
@@ -1806,6 +1858,20 @@ async def cmd_inventory(message: types.Message, state: FSMContext):
         
         dragon = Dragon.from_dict(dragon_data)
         inventory = db.get_inventory(user_id)
+        
+        # ИСПРАВЛЕНИЕ ОШИБКИ TypeError: int + dict
+        # Убедимся, что все значения - числа
+        validated_inventory = {}
+        total_items = 0
+        
+        for key, value in inventory.items():
+            if isinstance(value, (int, float)):
+                validated_inventory[key] = value
+                total_items += value
+            else:
+                # Если значение не число, считаем его как 0
+                logger.warning(f"Некорректное значение в инвентаре для {key}: {value}")
+                validated_inventory[key] = 0
         
         # Группируем предметы по категориям
         sweets = {
@@ -1837,14 +1903,11 @@ async def cmd_inventory(message: types.Message, state: FSMContext):
         }
         
         other = {
-            "toy": "🧸 Игрушка",
-            "brush": "💆 Расчёска",
-            "shampoo": "🧴 Шампунь",
-            "scissors": "✂️ Ножницы"
+            "toy": "🧸 Игрушка (старая)",
+            "brush": "💆 Расчёска (старая)",
+            "shampoo": "🧴 Шампунь (старый)",
+            "scissors": "✂️ Ножницы (старые)"
         }
-        
-        # Считаем общее количество предметов
-        total_items = sum(inventory.values())
         
         await message.answer(
             f"<b>📦 ИНВЕНТАРЬ {escape_html(dragon.name)}</b>\n\n"
@@ -1889,6 +1952,14 @@ async def process_inventory_category(callback: types.CallbackQuery, state: FSMCo
         dragon = Dragon.from_dict(dragon_data)
         inventory = db.get_inventory(user_id)
         
+        # ИСПРАВЛЕНИЕ: Убедимся, что значения - числа
+        safe_inventory = {}
+        for key, value in inventory.items():
+            if isinstance(value, (int, float)):
+                safe_inventory[key] = value
+            else:
+                safe_inventory[key] = 0
+        
         # Категории предметов
         categories = {
             "snacks": {
@@ -1917,10 +1988,10 @@ async def process_inventory_category(callback: types.CallbackQuery, state: FSMCo
                 "hazelnut": "🌰 Фундук"
             },
             "other": {
-                "toy": "🧸 Игрушка",
-                "brush": "💆 Расчёска",
-                "shampoo": "🧴 Шампунь",
-                "scissors": "✂️ Ножницы"
+                "toy": "🧸 Игрушка (старая)",
+                "brush": "💆 Расчёска (старая)",
+                "shampoo": "🧴 Шампунь (старый)",
+                "scissors": "✂️ Ножницы (старые)"
             }
         }
         
@@ -1945,9 +2016,9 @@ async def process_inventory_category(callback: types.CallbackQuery, state: FSMCo
             total_count = 0
             
             for item_id, item_name in category_items.items():
-                count = inventory.get(item_id, 0)
+                count = safe_inventory.get(item_id, 0)
                 if count > 0:
-                    items_text += f"• {item_name}: <code>{count}</code> шт.\n"
+                    items_text += f"• {item_name}: <code>{int(count)}</code> шт.\n"
                     total_count += count
             
             if not items_text:
@@ -2556,7 +2627,7 @@ async def cmd_sleep(message: types.Message, state: FSMContext):
 
 @dp.callback_query(GameStates.sleep_choice, F.data.startswith("sleep_"))
 async def process_sleep_choice(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора способа уложить спать"""
+    """Обработка выбора способа уложить спать - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         user_id = callback.from_user.id
         action = callback.data.replace("sleep_", "")
@@ -2589,8 +2660,13 @@ async def process_sleep_choice(callback: types.CallbackQuery, state: FSMContext)
             favorite_genre = dragon.favorites.get("жанр_книг", "сказка")
             book = get_random_book(favorite_genre)
             
-            if not book:
-                book = {"title": "Сказка о драконе", "content": "Жил-был маленький дракон..."}
+            # ИСПРАВЛЕНИЕ: Добавляем проверку на None и наличие ключей
+            if not book or 'title' not in book or 'content' not in book:
+                logger.warning(f"Книга не найдена или имеет некорректный формат: {book}")
+                book = {
+                    "title": "Сказка о драконе", 
+                    "content": "Жил-был маленький дракон, который любил кофе и объятия..."
+                }
             
             # Бонус для книгочея
             character_trait = dragon.character.get("основная_черта", "")
@@ -2827,13 +2903,13 @@ async def cmd_care(message: types.Message, state: FSMContext):
         
         # Добавляем дополнительные опции если есть предметы
         additional_options = ""
-        if inventory.get("dragon_brush", 0) > 0 or inventory.get("brush", 0) > 0:
+        if inventory.get("dragon_brush", 0) > 0:
             additional_options += "• 💆 <b>Расчесать шерстку</b> - с расчёской (лучший эффект)\n"
-        if inventory.get("magic_shampoo", 0) > 0 or inventory.get("shampoo", 0) > 0:
+        if inventory.get("magic_shampoo", 0) > 0:
             additional_options += "• 🧴 <b>Искупать с шампунем</b> - полноценная ванна\n"
-        if inventory.get("golden_scissors", 0) > 0 or inventory.get("scissors", 0) > 0:
+        if inventory.get("golden_scissors", 0) > 0:
             additional_options += "• ✂️ <b>Подстричь когти ножницами</b> - профессиональный уход\n"
-        if inventory.get("plush_dragon", 0) > 0 or inventory.get("toy", 0) > 0:
+        if inventory.get("plush_dragon", 0) > 0:
             additional_options += "• 🧸 <b>Играть с игрушкой</b> - развлечение и уход\n"
         
         if additional_options:
@@ -2841,10 +2917,10 @@ async def cmd_care(message: types.Message, state: FSMContext):
         
         care_text += (
             f"\n<b>📦 Доступные предметы:</b>\n"
-            f"• 💆 Расчёска: {inventory.get('dragon_brush', 0) + inventory.get('brush', 0)} шт.\n"
-            f"• 🧴 Шампунь: {inventory.get('magic_shampoo', 0) + inventory.get('shampoo', 0)} шт.\n"
-            f"• ✂️ Ножницы: {inventory.get('golden_scissors', 0) + inventory.get('scissors', 0)} шт.\n"
-            f"• 🧸 Игрушка: {inventory.get('plush_dragon', 0) + inventory.get('toy', 0)} шт.\n\n"
+            f"• 💆 Расчёска: {inventory.get('dragon_brush', 0)} шт.\n"
+            f"• 🧴 Шампунь: {inventory.get('magic_shampoo', 0)} шт.\n"
+            f"• ✂️ Ножницы: {inventory.get('golden_scissors', 0)} шт.\n"
+            f"• 🧸 Игрушка: {inventory.get('plush_dragon', 0)} шт.\n\n"
             f"<i>💡 Чистюля особенно оценит качественный уход!</i>"
         )
         
@@ -2917,13 +2993,10 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
             
         elif action == "brush_fur":
             inventory = db.get_inventory(user_id)
-            has_brush = inventory.get("dragon_brush", 0) > 0 or inventory.get("brush", 0) > 0
+            has_brush = inventory.get("dragon_brush", 0) > 0
             if has_brush:
                 # Используем расчёску
-                if inventory.get("dragon_brush", 0) > 0:
-                    db.update_inventory(user_id, "dragon_brush", -1)
-                elif inventory.get("brush", 0) > 0:
-                    db.update_inventory(user_id, "brush", -1)
+                db.update_inventory(user_id, "dragon_brush", -1)
                     
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 30)
@@ -2936,13 +3009,10 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "bath_shampoo":
             inventory = db.get_inventory(user_id)
-            has_shampoo = inventory.get("magic_shampoo", 0) > 0 or inventory.get("shampoo", 0) > 0
+            has_shampoo = inventory.get("magic_shampoo", 0) > 0
             if has_shampoo:
                 # Используем шампунь
-                if inventory.get("magic_shampoo", 0) > 0:
-                    db.update_inventory(user_id, "magic_shampoo", -1)
-                elif inventory.get("shampoo", 0) > 0:
-                    db.update_inventory(user_id, "shampoo", -1)
+                db.update_inventory(user_id, "magic_shampoo", -1)
                     
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 40)
@@ -2955,13 +3025,10 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "trim_nails_scissors":
             inventory = db.get_inventory(user_id)
-            has_scissors = inventory.get("golden_scissors", 0) > 0 or inventory.get("scissors", 0) > 0
+            has_scissors = inventory.get("golden_scissors", 0) > 0
             if has_scissors:
                 # Используем ножницы
-                if inventory.get("golden_scissors", 0) > 0:
-                    db.update_inventory(user_id, "golden_scissors", -1)
-                elif inventory.get("scissors", 0) > 0:
-                    db.update_inventory(user_id, "scissors", -1)
+                db.update_inventory(user_id, "golden_scissors", -1)
                     
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 25)
@@ -2973,13 +3040,10 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "play_toy":
             inventory = db.get_inventory(user_id)
-            has_toy = inventory.get("plush_dragon", 0) > 0 or inventory.get("toy", 0) > 0
+            has_toy = inventory.get("plush_dragon", 0) > 0
             if has_toy:
                 # Используем игрушку
-                if inventory.get("plush_dragon", 0) > 0:
-                    db.update_inventory(user_id, "plush_dragon", -1)
-                elif inventory.get("toy", 0) > 0:
-                    db.update_inventory(user_id, "toy", -1)
+                db.update_inventory(user_id, "plush_dragon", -1)
                     
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 20)
@@ -3096,7 +3160,7 @@ async def cmd_games(message: types.Message, state: FSMContext):
             f"<b>🎮 ИГРАТЬ С {escape_html(dragon.name)}</b>\n\n"
             f"{char_message}\n\n"
             f"⚡ <i>Энергия дракона:</i> <code>{energy_stat}%</code>\n"
-            f"🎭 <i>Характер:</i> <code>{character_trait}</code>\n\n"
+            f"🎭 <i>Характер:</b> <code>{character_trait}</code>\n\n"
             f"<b>💡 Доступные игры:</b>\n"
             f"• 🔢 <b>Угадай число</b> - дракон загадал число от 1 до 20\n\n"
             f"<i>💡 Игрик будет особенно рад поиграть!</i>",
@@ -3381,13 +3445,16 @@ async def process_notifications(callback: types.CallbackQuery):
 # ==================== ОСНОВНОЙ ЦИКЛ ====================
 async def periodic_tasks():
     """Периодические задачи"""
+    retry_count = 0
+    max_retries = 5
+    
     while True:
         try:
             # Очищаем старые записи в rate limiter
             rate_limiter.clear_old_entries()
             
             # Отправляем утренние уведомления
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             if 8 <= now.hour <= 9:  # Утренние часы
                 users = db.get_all_users()
                 for user_id in users:
@@ -3415,27 +3482,49 @@ async def periodic_tasks():
                             except Exception as e:
                                 logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
             
+            retry_count = 0  # Сбрасываем счетчик при успешном выполнении
             await asyncio.sleep(300)  # Проверяем каждые 5 минут
             
         except Exception as e:
-            logger.error(f"Ошибка в periodic_tasks: {e}")
-            await asyncio.sleep(60)
+            retry_count += 1
+            logger.error(f"Ошибка в periodic_tasks (попытка {retry_count}): {e}")
+            
+            if retry_count >= max_retries:
+                logger.error(f"Достигнуто максимальное количество попыток ({max_retries}). Перезапуск через 60 секунд.")
+                retry_count = 0
+                await asyncio.sleep(60)
+            else:
+                # Экспоненциальная задержка
+                delay = min(60 * retry_count, 300)  # Максимум 5 минут
+                logger.info(f"Повторная попытка через {delay} секунд...")
+                await asyncio.sleep(delay)
 
 async def main():
     """Основная функция запуска бота"""
     try:
-        logger.info("Запуск бота Кофейный Дракон v6.1...")
+        logger.info("Запуск бота Кофейный Дракон v6.1.1...")
+        
+        # Добавляем обработчик ошибок
+        dp.error.register(error_handler)
         
         # Запускаем периодические задачи
         asyncio.create_task(periodic_tasks())
         
-        # Запускаем бота
-        await dp.start_polling(bot)
+        # Запускаем бота с настройками для предотвращения конфликтов
+        await dp.start_polling(bot, 
+                              allowed_updates=dp.resolve_used_update_types(),
+                              skip_updates=True)
         
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {e}")
+        logger.error(f"Критическая ошибка при запуске бота: {e}\n{traceback.format_exc()}")
     finally:
         await bot.session.close()
+        logger.info("Бот остановлен.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем.")
+    except Exception as e:
+        logger.error(f"Необработанная ошибка: {e}\n{traceback.format_exc()}")
