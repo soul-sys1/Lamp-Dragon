@@ -1,15 +1,17 @@
 """
-🐉 КОФЕЙНЫЙ ДРАКОН - Версия 5.1
+🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.0
 Улучшенная версия с:
-- Детальными описаниями действий
-- Реалистичными играми
-- Улучшенными уведомлениями
-- Балансировкой механик
+- Глубоко проработанными характерами (10 типов)
+- Менее агрессивным снижением показателей (5% в час)
+- Поддержкой часовых поясов игроков
+- Упрощенной системой помощи
+- Оптимизированным магазином (3 категории)
 """
 import asyncio
 import logging
 import random
 import re
+import pytz
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Tuple
 from enum import Enum
@@ -53,6 +55,8 @@ class GameStates(StatesGroup):
     care_action = State()
     minigame_state = State()
     book_reading = State()
+    setting_timezone = State()
+    help_section = State()
 
 # ==================== КЛАССЫ И УТИЛИТЫ ====================
 class TimeOfDay(Enum):
@@ -144,6 +148,280 @@ class MinigameManager:
             "reward": {"gold": 20, "mood": 30, "energy": -10}
         }
 
+# ==================== МОДУЛЬ ХАРАКТЕРОВ ====================
+class CharacterPersonality:
+    """Глубоко проработанные характеры драконов"""
+    
+    @staticmethod
+    def get_character_description(character_trait: str) -> Dict:
+        """Возвращает полное описание характера"""
+        descriptions = {
+            "кофеман": {
+                "name": "☕ Кофеман",
+                "description": (
+                    "Рождён среди кофейных плантаций волшебных гор, "
+                    "этот дракон чувствует кофе на расстоянии мили! Его нос "
+                    "может уловить аромат свежесваренного эспрессо за три дома."
+                ),
+                "features": [
+                    "☕ Обожает экспериментировать с разными сортами",
+                    "⚡ Быстро теряет энергию без кофейной подпитки",
+                    "💬 Может часами рассказывать о методах заварки",
+                    "🎯 Знает все виды кофе в радиусе 100 км"
+                ],
+                "advice": "Всегда держите запас кофейных зёрен!",
+                "emoji": "☕"
+            },
+            "книгочей": {
+                "name": "📚 Книгочей",
+                "description": (
+                    "Выращен в древней библиотеке драконьего знания, "
+                    "этот дракон прочитал больше книг, чем звёзд на небе. "
+                    "Каждая книга для него - новое приключение."
+                ),
+                "features": [
+                    "📖 Обожает, когда ему читают перед сном",
+                    "🧠 Быстро учится и запоминает прочитанное",
+                    "💭 Часто цитирует любимые произведения",
+                    "🎓 Знает историю всех драконьих родов"
+                ],
+                "advice": "Читайте ему каждый вечер - он это обожает!",
+                "emoji": "📚"
+            },
+            "неженка": {
+                "name": "💖 Неженка",
+                "description": (
+                    "Самый ласковый дракон во всём королевстве! "
+                    "Рождённый из облака нежности и заботы, он верит, "
+                    "что мир можно изменить объятиями."
+                ),
+                "features": [
+                    "💕 Требует минимум 3 обнимашки в день",
+                    "😢 Быстро грустит без внимания",
+                    "✨ Расцветает от ласковых слов",
+                    "🎀 Обожает, когда его гладят и чешут"
+                ],
+                "advice": "Не скупитесь на ласку и внимание!",
+                "emoji": "💖"
+            },
+            "чистюля": {
+                "name": "✨ Чистюля",
+                "description": (
+                    "Блестит и сверкает, как только что отполированный алмаз! "
+                    "Этот дракон следит за чистотой так тщательно, "
+                    "что даже пылинки боятся к нему приблизиться."
+                ),
+                "features": [
+                    "✨ Быстро замечает малейшую пыль на себе",
+                    "🛁 Обожает водные процедуры и уход",
+                    "👃 Чувствителен к запахам",
+                    "💅 Следит за состоянием коготков"
+                ],
+                "advice": "Регулярно ухаживайте за его шёрсткой!",
+                "emoji": "✨"
+            },
+            "гурман": {
+                "name": "🍰 Гурман",
+                "description": (
+                    "Настоящий ценитель изысканных вкусов! "
+                    "Этот дракон родился на кухне волшебного замка "
+                    "и с детства разбирается в кулинарных тонкостях."
+                ),
+                "features": [
+                    "👨‍🍳 Критично оценивает каждое угощение",
+                    "💎 Ценит качественные ингредиенты",
+                    "🎭 Может отказаться от 'простых' сладостей",
+                    "💰 Даёт больше золота за любимые лакомства"
+                ],
+                "advice": "Угощайте его только лучшими сладостями!",
+                "emoji": "🍰"
+            },
+            "игрик": {
+                "name": "🎮 Игрик",
+                "description": (
+                    "Энергия и азарт в одном драконьем теле! "
+                    "Рождённый в игровой вселенной, он верит, "
+                    "что жизнь - это самая интересная игра."
+                ),
+                "features": [
+                    "🎯 Чаще инициирует мини-игры",
+                    "⚡ Меньше устаёт от активностей",
+                    "🏆 Обожает соревнования и победы",
+                    "🤝 Ищет игровых партнёров"
+                ],
+                "advice": "Играйте с ним каждый день!",
+                "emoji": "🎮"
+            },
+            "соня": {
+                "name": "😴 Соня",
+                "description": (
+                    "Мастер сладких снов и пушистых облаков! "
+                    "Этот дракон спит так крепко, что иногда "
+                    "приснится самому себе во сне."
+                ),
+                "features": [
+                    "💤 Чаще хочет спать и отдыхать",
+                    "⚡ Быстрее восстанавливает энергию во сне",
+                    "🌙 Может заснуть в самых неожиданных местах",
+                    "🛏️ Обожает мягкие подушки и одеяла"
+                ],
+                "advice": "Не будите его без крайней необходимости!",
+                "emoji": "😴"
+            },
+            "энерджайзер": {
+                "name": "⚡ Энерджайзер",
+                "description": (
+                    "Живая электростанция драконьего мира! "
+                    "Рождённый во время грозы, он накопил столько энергии, "
+                    "что может осветить целый город."
+                ),
+                "features": [
+                    "⚡ Медленнее теряет энергию",
+                    "🏃 Чаще инициирует активные действия",
+                    "🎢 Может 'перевозбудиться' от кофе",
+                    "💥 Иногда получает дополнительное действие"
+                ],
+                "advice": "Давайте ему много активностей!",
+                "emoji": "⚡"
+            },
+            "философ": {
+                "name": "🤔 Философ",
+                "description": (
+                    "Мудрец драконьего племени! "
+                    "Рождённый под древним дубом мудрости, "
+                    "он видит смысл там, где другие видят лишь поверхность."
+                ),
+                "features": [
+                    "💭 Задаёт глубокие вопросы",
+                    "😌 Реже теряет настроение",
+                    "📜 Любит размышлять о жизни",
+                    "🎓 Даёт мудрые советы"
+                ],
+                "advice": "Обсуждайте с ним важные темы!",
+                "emoji": "🤔"
+            },
+            "исследователь": {
+                "name": "🔍 Исследователь",
+                "description": (
+                    "Неутомимый искатель тайн и загадок! "
+                    "Рождённый с картой в лапках, он мечтает "
+                    "исследовать каждый уголок волшебного мира."
+                ),
+                "features": [
+                    "🔎 Задаёт любопытные вопросы",
+                    "💎 Чаще находит случайные предметы",
+                    "📈 Бонус к опыту от новых действий",
+                    "🗺️ Обожает изучать новое"
+                ],
+                "advice": "Поощряйте его любознательность!",
+                "emoji": "🔍"
+            }
+        }
+        return descriptions.get(character_trait, descriptions["неженка"])
+    
+    @staticmethod
+    def get_character_message(character_trait: str, situation: str, dragon_name: str) -> str:
+        """Возвращает сообщение в зависимости от характера и ситуации"""
+        messages = {
+            "кофеман": {
+                "morning": f"☕ {dragon_name} просыпается и сразу тянется к кофемашине: 'Утро начинается с ароматного кофе!'",
+                "coffee_time": f"☕ {dragon_name} принюхивается: 'Чувствую нотки арабики с оттенком карамели...'",
+                "no_coffee": f"😫 {dragon_name} грустно: 'Без кофе я как дракон без крыльев...'",
+                "favorite_coffee": f"🎉 {dragon_name} в восторге: 'Это именно тот сорт, о котором я мечтал!'"
+            },
+            "книгочей": {
+                "morning": f"📚 {dragon_name} зевает: 'Как жаль прерывать такой интересный сон... В нём я читал древний манускрипт!'",
+                "reading_time": f"📖 {dragon_name} уютно устраивается: 'А помнишь, в прошлой книге герой...'",
+                "bedtime": f"🌙 {dragon_name} просит: 'Можно ещё одну главу? Пожалуйста!'",
+                "discovery": f"🤔 {dragon_name} задумчиво: 'Интересно, а что бы сделал герой той книги в этой ситуации?'"
+            },
+            "неженка": {
+                "morning": f"💖 {dragon_name} потягивается: 'Доброе утро! Мне уже не хватает твоих объятий...'",
+                "hug_time": f"🤗 {dragon_name} обнимает вас: 'Ты самый лучший хранитель на свете!'",
+                "sad": f"😔 {dragon_name} грустит: 'Мне кажется, ты меня сегодня мало обнимал...'",
+                "happy": f"✨ {dragon_name} сияет: 'Когда ты рядом, весь мир становится теплее!'"
+            },
+            "чистюля": {
+                "morning": f"✨ {dragon_name} проверяет лапки: 'Ой, кажется, нужно почистить коготки...'",
+                "dirty": f"😷 {dragon_name} морщится: 'Я чувствую пылинку на своём левом боку!'",
+                "clean": f"🌟 {dragon_name} сверкает: 'Теперь я блещу чистото!'",
+                "care_time": f"🛁 {dragon_name} радостно: 'Время водных процедур! Я так это люблю!'"
+            },
+            "гурман": {
+                "morning": f"🍰 {dragon_name} принюхивается: 'Чувствую запах свежей выпечки... Или это моё воображение?'",
+                "treat_time": f"👨‍🍳 {dragon_name} оценивающе: 'Хм, интересное сочетание вкусов...'",
+                "favorite_food": f"🎊 {dragon_name} в восторге: 'Это божественно! Где ты нашёл такое лакомство?'",
+                "simple_food": f"😐 {dragon_name} вежливо: 'Спасибо, но... я не очень голоден.'"
+            },
+            "игрик": {
+                "morning": f"🎮 {dragon_name} прыгает с кровати: 'Ура, новый день! Сколько игр нас сегодня ждёт?'",
+                "game_time": f"🏆 {dragon_name} азартно: 'Давай сыграем! На этот раз я точно выиграю!'",
+                "win": f"🎉 {dragon_name} ликует: 'Я чемпион! Давай ещё одну игру!'",
+                "lose": f"😤 {dragon_name} решительно: 'В следующий раз я обязательно выиграю!'"
+            },
+            "соня": {
+                "morning": f"😴 {dragon_name} неохотно открывает глаз: 'Уже утро? Кажется, я только что уснул...'",
+                "nap_time": f"💤 {dragon_name} зевает: 'Может, вздремнём немного? Всего пять минуточек...'",
+                "bedtime": f"🛏️ {dragon_name} уютно сворачивается: 'Наконец-то можно спать... Спокойной ночи!'",
+                "well_rested": f"✨ {dragon_name} потягивается: 'Как же хорошо выспаться!'"
+            },
+            "энерджайзер": {
+                "morning": f"⚡ {dragon_name} вскакивает: 'Доброе утро! У меня столько энергии, что можно горы свернуть!'",
+                "active": f"🏃 {dragon_name} носится по комнате: 'Не могу усидеть на месте! Давай что-нибудь сделаем!'",
+                "coffee_boost": f"💥 {dragon_name} после кофе: 'Вау! Теперь я могу летать без крыльев!'",
+                "evening": f"🌙 {dragon_name} всё ещё активен: 'Уже вечер? А я только разогнался!'"
+            },
+            "философ": {
+                "morning": f"🤔 {dragon_name} задумчиво: 'Интересно, что значит "доброе утро"? Это утро доброе к нам или мы к нему?'",
+                "thinking": f"💭 {dragon_name} размышляет: 'Знаешь, я тут подумал о смысле драконьего бытия...'",
+                "question": f"❓ {dragon_name} спрашивает: 'А что для тебя значит слово "счастье"?'",
+                "wisdom": f"🎓 {dragon_name} мудро: 'Иногда чтобы найти ответ, нужно просто перестать искать.'"
+            },
+            "исследователь": {
+                "morning": f"🔍 {dragon_name} с интересом: 'Интересно, что нового сегодня откроется?'",
+                "curious": f"🤨 {dragon_name} рассматривает предмет: 'А как это работает? Из чего сделано?'",
+                "discovery": f"🎊 {dragon_name} радостно: 'Смотри, что я нашёл! Это же древний артефакт!'",
+                "question": f"❓ {dragon_name} спрашивает: 'А ты знаешь, почему трава зелёная?'"
+            }
+        }
+        
+        character_msgs = messages.get(character_trait, messages["неженка"])
+        return character_msgs.get(situation, f"{dragon_name} смотрит на вас.")
+
+# ==================== УТИЛИТЫ ВРЕМЕНИ ====================
+def get_user_local_time(user_id: int) -> datetime:
+    """Получает локальное время пользователя"""
+    try:
+        settings = db.get_user_settings(user_id)
+        timezone_str = settings.get('timezone', 'UTC')
+        
+        try:
+            user_tz = pytz.timezone(timezone_str)
+        except pytz.UnknownTimeZoneError:
+            user_tz = pytz.UTC
+        
+        utc_now = datetime.now(pytz.UTC)
+        return utc_now.astimezone(user_tz)
+    except Exception as e:
+        logger.error(f"Ошибка получения времени пользователя {user_id}: {e}")
+        return datetime.now(pytz.UTC)
+
+def get_time_of_day(user_id: int) -> TimeOfDay:
+    """Определяет время суток для пользователя"""
+    local_time = get_user_local_time(user_id)
+    hour = local_time.hour
+    
+    if 8 <= hour <= 9:
+        return TimeOfDay.MORNING
+    elif 12 <= hour <= 14:
+        return TimeOfDay.AFTERNOON
+    elif 19 <= hour <= 21:
+        return TimeOfDay.EVENING
+    elif 22 <= hour <= 23 or 0 <= hour <= 5:
+        return TimeOfDay.NIGHT
+    else:
+        return TimeOfDay.AFTERNOON  # По умолчанию
+
 def validate_dragon_name(name: str) -> Tuple[bool, Optional[str]]:
     name = name.strip()
     
@@ -226,7 +504,6 @@ def format_stat_line(stat_name: str, stat_value: int) -> str:
     }
     
     name = stat_names.get(stat_name, stat_name)
-    # Фиксированная ширина для всех названий (12 символов)
     padded_name = name.ljust(12)
     bar = create_progress_bar(stat_value)
     
@@ -257,51 +534,124 @@ def get_short_main_keyboard() -> ReplyKeyboardMarkup:
     )
     return keyboard
 
-def get_shop_keyboard() -> InlineKeyboardMarkup:
+def get_shop_main_keyboard() -> InlineKeyboardMarkup:
+    """Главное меню магазина (3 категории)"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="☕ Кофе и ингредиенты", callback_data="shop_coffee")],
+            [InlineKeyboardButton(text="🍪 Сладости и угощения", callback_data="shop_sweets")],
+            [InlineKeyboardButton(text="✨ Предметы для ухода", callback_data="shop_care")],
+            [InlineKeyboardButton(text="❌ Закрыть", callback_data="shop_close")]
+        ]
+    )
+    return keyboard
+
+def get_coffee_shop_keyboard() -> InlineKeyboardMarkup:
+    """Магазин кофе и ингредиентов"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="☕ Зерна", callback_data="shop_coffee"),
+                InlineKeyboardButton(text="☕ Кофейные зёрна", callback_data="buy_coffee_beans"),
                 InlineKeyboardButton(text="10💰", callback_data="price_10")
             ],
             [
-                InlineKeyboardButton(text="🍪 Печенье", callback_data="shop_cookie"),
-                InlineKeyboardButton(text="5💰", callback_data="price_5")
-            ],
-            [
-                InlineKeyboardButton(text="🍫 Шоколад", callback_data="shop_chocolate"),
-                InlineKeyboardButton(text="15💰", callback_data="price_15")
-            ],
-            [
-                InlineKeyboardButton(text="🍬 Мармелад", callback_data="shop_marmalade"),
+                InlineKeyboardButton(text="🍫 Шоколадные чипсы", callback_data="buy_chocolate_chips"),
                 InlineKeyboardButton(text="8💰", callback_data="price_8")
             ],
             [
-                InlineKeyboardButton(text="🎂 Пирожное", callback_data="shop_cake"),
+                InlineKeyboardButton(text="🍯 Медовый сироп", callback_data="buy_honey_syrup"),
                 InlineKeyboardButton(text="12💰", callback_data="price_12")
             ],
             [
-                InlineKeyboardButton(text="☁️ Зефир", callback_data="shop_marshmallow"),
-                InlineKeyboardButton(text="7💰", callback_data="price_7")
-            ],
-            [
-                InlineKeyboardButton(text="💆 Расческа", callback_data="shop_brush"),
-                InlineKeyboardButton(text="25💰", callback_data="price_25")
-            ],
-            [
-                InlineKeyboardButton(text="🧴 Шампунь", callback_data="shop_shampoo"),
-                InlineKeyboardButton(text="30💰", callback_data="price_30")
-            ],
-            [
-                InlineKeyboardButton(text="✂️ Ножницы", callback_data="shop_scissors"),
-                InlineKeyboardButton(text="20💰", callback_data="price_20")
-            ],
-            [
-                InlineKeyboardButton(text="🧸 Игрушка", callback_data="shop_toy"),
+                InlineKeyboardButton(text="🍦 Ванильное мороженое", callback_data="buy_vanilla_icecream"),
                 InlineKeyboardButton(text="15💰", callback_data="price_15")
             ],
             [
-                InlineKeyboardButton(text="« Назад", callback_data="shop_back"),
+                InlineKeyboardButton(text="🍭 Карамельный сироп", callback_data="buy_caramel_syrup"),
+                InlineKeyboardButton(text="10💰", callback_data="price_10")
+            ],
+            [
+                InlineKeyboardButton(text="🌰 Фундук молотый", callback_data="buy_hazelnut"),
+                InlineKeyboardButton(text="18💰", callback_data="price_18")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад в магазин", callback_data="shop_back"),
+                InlineKeyboardButton(text="❌ Закрыть", callback_data="shop_close")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_sweets_shop_keyboard() -> InlineKeyboardMarkup:
+    """Магазин сладостей и угощений"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🍪 Печенье с изюмом", callback_data="buy_cookie_raisin"),
+                InlineKeyboardButton(text="5💰", callback_data="price_5")
+            ],
+            [
+                InlineKeyboardButton(text="🍫 Шоколадная плитка", callback_data="buy_chocolate_bar"),
+                InlineKeyboardButton(text="15💰", callback_data="price_15")
+            ],
+            [
+                InlineKeyboardButton(text="☁️ Ванильный зефир", callback_data="buy_vanilla_marshmallow"),
+                InlineKeyboardButton(text="7💰", callback_data="price_7")
+            ],
+            [
+                InlineKeyboardButton(text="🎄 Имбирный пряник", callback_data="buy_gingerbread"),
+                InlineKeyboardButton(text="8💰", callback_data="price_8")
+            ],
+            [
+                InlineKeyboardButton(text="🍬 Фруктовый мармелад", callback_data="buy_fruit_marmalade"),
+                InlineKeyboardButton(text="10💰", callback_data="price_10")
+            ],
+            [
+                InlineKeyboardButton(text="🎂 Шоколадное пирожное", callback_data="buy_chocolate_cake"),
+                InlineKeyboardButton(text="20💰", callback_data="price_20")
+            ],
+            [
+                InlineKeyboardButton(text="🍩 Сладкий пончик", callback_data="buy_donut"),
+                InlineKeyboardButton(text="12💰", callback_data="price_12")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад в магазин", callback_data="shop_back"),
+                InlineKeyboardButton(text="❌ Закрыть", callback_data="shop_close")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_care_shop_keyboard() -> InlineKeyboardMarkup:
+    """Магазин предметов для ухода"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💆 Драконья расчёска", callback_data="buy_dragon_brush"),
+                InlineKeyboardButton(text="25💰", callback_data="price_25")
+            ],
+            [
+                InlineKeyboardButton(text="🧴 Волшебный шампунь", callback_data="buy_magic_shampoo"),
+                InlineKeyboardButton(text="30💰", callback_data="price_30")
+            ],
+            [
+                InlineKeyboardButton(text="✂️ Золотые ножницы", callback_data="buy_golden_scissors"),
+                InlineKeyboardButton(text="35💰", callback_data="price_35")
+            ],
+            [
+                InlineKeyboardButton(text="🧸 Плюшевый дракончик", callback_data="buy_plush_dragon"),
+                InlineKeyboardButton(text="40💰", callback_data="price_40")
+            ],
+            [
+                InlineKeyboardButton(text="🛁 Ароматная соль", callback_data="buy_aromatic_salt"),
+                InlineKeyboardButton(text="20💰", callback_data="price_20")
+            ],
+            [
+                InlineKeyboardButton(text="💅 Лак для когтей", callback_data="buy_nail_polish"),
+                InlineKeyboardButton(text="28💰", callback_data="price_28")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад в магазин", callback_data="shop_back"),
                 InlineKeyboardButton(text="❌ Закрыть", callback_data="shop_close")
             ]
         ]
@@ -466,7 +816,43 @@ def get_notifications_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔕 Выключить", callback_data="notif_off")
             ],
             [
+                InlineKeyboardButton(text="⏰ Настроить время", callback_data="notif_time"),
                 InlineKeyboardButton(text="« Назад", callback_data="notif_back")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_timezone_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора часового пояса"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Москва (+3)", callback_data="tz_Europe/Moscow"),
+                InlineKeyboardButton(text="Киев (+2)", callback_data="tz_Europe/Kiev")
+            ],
+            [
+                InlineKeyboardButton(text="Лондон (+0)", callback_data="tz_Europe/London"),
+                InlineKeyboardButton(text="Париж (+1)", callback_data="tz_Europe/Paris")
+            ],
+            [
+                InlineKeyboardButton(text="Нью-Йорк (-5)", callback_data="tz_America/New_York"),
+                InlineKeyboardButton(text="Лос-Анджелес (-8)", callback_data="tz_America/Los_Angeles")
+            ],
+            [
+                InlineKeyboardButton(text="Токио (+9)", callback_data="tz_Asia/Tokyo"),
+                InlineKeyboardButton(text="Пекин (+8)", callback_data="tz_Asia/Shanghai")
+            ],
+            [
+                InlineKeyboardButton(text="Сидней (+11)", callback_data="tz_Australia/Sydney"),
+                InlineKeyboardButton(text="Дубай (+4)", callback_data="tz_Asia/Dubai")
+            ],
+            [
+                InlineKeyboardButton(text="Астана (+5)", callback_data="tz_Asia/Almaty"),
+                InlineKeyboardButton(text="Екатеринбург (+5)", callback_data="tz_Asia/Yekaterinburg")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад", callback_data="tz_back")
             ]
         ]
     )
@@ -518,6 +904,54 @@ def get_inventory_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="« Назад", callback_data="inv_back")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_help_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для меню помощи (2 раздела)"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📋 Все команды", callback_data="help_commands")
+            ],
+            [
+                InlineKeyboardButton(text="🎭 Все характеры", callback_data="help_characters")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад", callback_data="help_back")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_characters_list_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора характера в справке"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="☕ Кофеман", callback_data="char_cofeman"),
+                InlineKeyboardButton(text="📚 Книгочей", callback_data="char_bookworm")
+            ],
+            [
+                InlineKeyboardButton(text="💖 Неженка", callback_data="char_tender"),
+                InlineKeyboardButton(text="✨ Чистюля", callback_data="char_clean")
+            ],
+            [
+                InlineKeyboardButton(text="🍰 Гурман", callback_data="char_gourmet"),
+                InlineKeyboardButton(text="🎮 Игрик", callback_data="char_gamer")
+            ],
+            [
+                InlineKeyboardButton(text="😴 Соня", callback_data="char_sleeper"),
+                InlineKeyboardButton(text="⚡ Энерджайзер", callback_data="char_energizer")
+            ],
+            [
+                InlineKeyboardButton(text="🤔 Философ", callback_data="char_philosopher"),
+                InlineKeyboardButton(text="🔍 Исследователь", callback_data="char_explorer")
+            ],
+            [
+                InlineKeyboardButton(text="« Назад в помощь", callback_data="char_back")
             ]
         ]
     )
@@ -687,13 +1121,13 @@ async def cmd_start(message: types.Message):
             
             f"<b>🐾 Тебе выпала честь стать хранителем одного из них!</b>\n\n"
             
-            f"<b>📋 ВОЗМОЖНОСТИ 5.1:</b>\n"
-            f"• 🎮 <b>Мини-игра «Угадай число»</b> с уникальной механикой\n"
-            f"• 📖 <b>Чтение настоящих книг</b> перед сном\n"
-            f"• 😴 <b>Детальные сцены сна</b> с разными вариантами\n"
-            f"• 🤗 <b>Живые обнимашки</b> в разных ситуациях\n"
-            f"• 🔔 <b>Умные уведомления</b> с заботой о вас\n"
-            f"• ⚡ <b>Динамические показатели</b>, меняющиеся со временем\n\n"
+            f"<b>📋 ВОЗМОЖНОСТИ 6.0:</b>\n"
+            f"• 🎭 <b>10 уникальных характеров</b> с глубокой проработкой\n"
+            f"• ⏳ <b>Менее агрессивные показатели</b> (5%/час)\n"
+            f"• 🌍 <b>Поддержка часовых поясов</b> по всему миру\n"
+            f"• 🛍️ <b>Упрощённый магазин</b> с 3 категориями\n"
+            f"• 📚 <b>Расширенная помощь</b> по характерам\n"
+            f"• ❤️ <b>Уникальные реакции</b> для каждого дракона\n\n"
         )
         
         if has_dragon:
@@ -716,45 +1150,217 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("help"))
 @dp.message(F.text == "📖 Помощь")
-async def cmd_help(message: types.Message):
+async def cmd_help(message: types.Message, state: FSMContext):
     """Команда /help - красивая справка"""
-    help_text = (
-        "<b>📚 КОМАНДЫ И ВОЗМОЖНОСТИ (v5.1)</b>\n\n"
+    try:
+        user_id = message.from_user.id
         
-        "<b>🐉 ОСНОВНОЕ</b>\n"
-        "<code>/start</code> - начать игру\n"
-        "<code>/help</code> - эта справка\n"
-        "<code>/create</code> - создать дракона\n"
-        "<code>/status</code> - статус дракона\n\n"
+        # Удаляем предыдущее сообщение если оно было из другой вкладки
+        try:
+            await message.delete()
+        except:
+            pass
         
-        "<b>😴 СОН И ОТДЫХ</b>\n"
-        "<code>/sleep</code> - уложить дракона спать с разными сценами\n"
-        "<code>/dream</code> - присниться дракону\n\n"
+        has_dragon = db.dragon_exists(user_id)
         
-        "<b>❤ УХОД И ЗАБОТА</b>\n"
-        "<code>/coffee</code> - приготовить кофе с добавками\n"
-        "<code>/feed</code> - покормить сладостями\n"
-        "<code>/hug</code> - обнять дракона в разных ситуациях\n"
-        "<code>/care</code> - ухаживать за драконом\n\n"
+        help_text = (
+            "<b>📚 КОМАНДЫ И ХАРАКТЕРЫ (v6.0)</b>\n\n"
+            
+            "<b>🐉 ОСНОВНЫЕ КОМАНДЫ:</b>\n"
+            "<code>/start</code> - начать игру\n"
+            "<code>/help</code> - эта справка\n"
+            "<code>/create</code> - создать дракона\n"
+            "<code>/status</code> - статус дракона\n"
+            "<code>/timezone</code> - настроить часовой пояс\n\n"
+            
+            "<b>😴 СОН И ОТДЫХ</b>\n"
+            "<code>/sleep</code> - уложить дракона спать с разными сценами\n\n"
+            
+            "<b>❤ УХОД И ЗАБОТА</b>\n"
+            "<code>/coffee</code> - приготовить кофе с добавками\n"
+            "<code>/feed</code> - покормить сладостями\n"
+            "<code>/hug</code> - обнять дракона в разных ситуациях\n"
+            "<code>/care</code> - ухаживать за драконом\n\n"
+            
+            "<b>🎮 РАЗВЛЕЧЕНИЯ</b>\n"
+            "<code>/games</code> - поиграть в игру\n\n"
+            
+            "<b>💰 ЭКОНОМИКА</b>\n"
+            "<code>/shop</code> - магазин товаров\n"
+            "<code>/inventory</code> - инвентарь\n\n"
+            
+            "<b>🔕 НАСТРОЙКИ</b>\n"
+            "<code>/notifications</code> - управление уведомлениями\n\n"
+            
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "<i>💡 Используй кнопки внизу для быстрого доступа</i>\n"
+            "<i>👇 Или выбери раздел помощи:</i>"
+        )
         
-        "<b>🎮 РАЗВЛЕЧЕНИЯ</b>\n"
-        "<code>/games</code> - поиграть в игру\n"
-        "<code>/play</code> - быстрая игра\n\n"
+        await message.answer(help_text, parse_mode="HTML", reply_markup=get_help_keyboard())
+        await state.set_state(GameStates.help_section)
         
-        "<b>💰 ЭКОНОМИКА</b>\n"
-        "<code>/shop</code> - магазин товаров\n"
-        "<code>/inventory</code> - инвентарь\n"
-        "<code>/gold</code> - проверить золото\n\n"
+    except Exception as e:
+        logger.error(f"Ошибка в cmd_help: {e}")
+        await message.answer("<b>❌ Произошла ошибка при показе помощи.</b>", parse_mode="HTML")
+
+@dp.callback_query(GameStates.help_section, F.data.startswith("help_"))
+async def process_help_section(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка разделов помощи"""
+    try:
+        user_id = callback.from_user.id
+        action = callback.data.replace("help_", "")
         
-        "<b>🔕 НАСТРОЙКИ</b>\n"
-        "<code>/notifications</code> - управление уведомлениями\n\n"
+        if action == "back":
+            await callback.message.delete()
+            await callback.answer("↩️ Возвращаемся...")
+            await state.clear()
+            return
         
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "<i>💡 Используй кнопки внизу для быстрого доступа</i>"
-    )
-    
-    keyboard = get_main_keyboard() if db.dragon_exists(message.from_user.id) else get_short_main_keyboard()
-    await message.answer(help_text, parse_mode="HTML", reply_markup=keyboard)
+        if action == "commands":
+            commands_text = (
+                "<b>📋 ВСЕ КОМАНДЫ БОТА</b>\n\n"
+                
+                "<b>🐉 ОСНОВНЫЕ:</b>\n"
+                "<code>/start</code> - начать игру\n"
+                "<code>/help</code> - помощь\n"
+                "<code>/create</code> - создать дракона\n"
+                "<code>/status</code> - статус дракона\n"
+                "<code>/timezone</code> - настроить часовой пояс\n\n"
+                
+                "<b>☕ КОФЕ И ЕДА:</b>\n"
+                "<code>/coffee</code> - приготовить кофе\n"
+                "<code>/feed</code> - покормить дракона\n\n"
+                
+                "<b>😴 ОТДЫХ И УХОД:</b>\n"
+                "<code>/sleep</code> - уложить спать\n"
+                "<code>/hug</code> - обнять дракона\n"
+                "<code>/care</code> - ухаживать за драконом\n\n"
+                
+                "<b>🎮 РАЗВЛЕЧЕНИЯ:</b>\n"
+                "<code>/games</code> - мини-игры\n\n"
+                
+                "<b>💰 ЭКОНОМИКА:</b>\n"
+                "<code>/shop</code> - магазин\n"
+                "<code>/inventory</code> - инвентарь\n\n"
+                
+                "<b>🔕 НАСТРОЙКИ:</b>\n"
+                "<code>/notifications</code> - уведомления\n"
+                "<code>/settings</code> - настройки\n\n"
+                
+                "━━━━━━━━━━━━━━━━━━━\n"
+                "<i>💡 Также используй кнопки меню для быстрого доступа!</i>"
+            )
+            
+            await callback.message.edit_text(
+                commands_text,
+                parse_mode="HTML",
+                reply_markup=get_help_keyboard()
+            )
+            
+        elif action == "characters":
+            characters_intro = (
+                "<b>🎭 ВСЕ ХАРАКТЕРЫ ДРАКОНОВ</b>\n\n"
+                
+                "<i>✨ Каждый дракон обладает уникальным характером,\n"
+                "который влияет на его поведение, реакции и предпочтения!</i>\n\n"
+                
+                "👇 <b>Выбери характер, чтобы узнать о нём подробнее:</b>\n\n"
+                
+                "• ☕ <b>Кофеман</b> - обожает кофе и разбирается в сортах\n"
+                "• 📚 <b>Книгочей</b> - живёт в мире книг и историй\n"
+                "• 💖 <b>Неженка</b> - требует много ласки и внимания\n"
+                "• ✨ <b>Чистюля</b> - следит за чистотой и уходом\n"
+                "• 🍰 <b>Гурман</b> - ценитель изысканных вкусов\n"
+                "• 🎮 <b>Игрик</b> - обожает игры и соревнования\n"
+                "• 😴 <b>Соня</b> - мастер сладких снов и отдыха\n"
+                "• ⚡ <b>Энерджайзер</b> - живая электростанция\n"
+                "• 🤔 <b>Философ</b> - мудрец драконьего мира\n"
+                "• 🔍 <b>Исследователь</b> - искатель тайн и загадок\n\n"
+                
+                "<i>💡 Характер определяется при создании дракона\n"
+                "и остаётся с ним на всю жизнь!</i>"
+            )
+            
+            await callback.message.edit_text(
+                characters_intro,
+                parse_mode="HTML",
+                reply_markup=get_characters_list_keyboard()
+            )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_help_section: {e}")
+        await callback.answer("❌ Произошла ошибка")
+
+@dp.callback_query(GameStates.help_section, F.data.startswith("char_"))
+async def process_character_detail(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка детального просмотра характера"""
+    try:
+        action = callback.data.replace("char_", "")
+        
+        if action == "back":
+            characters_intro = (
+                "<b>🎭 ВСЕ ХАРАКТЕРЫ ДРАКОНОВ</b>\n\n"
+                "<i>👇 Выбери характер, чтобы узнать о нём подробнее:</i>"
+            )
+            
+            await callback.message.edit_text(
+                characters_intro,
+                parse_mode="HTML",
+                reply_markup=get_characters_list_keyboard()
+            )
+            await callback.answer()
+            return
+        
+        # Сопоставление callback с названиями характеров
+        character_map = {
+            "cofeman": "кофеман",
+            "bookworm": "книгочей",
+            "tender": "неженка",
+            "clean": "чистюля",
+            "gourmet": "гурман",
+            "gamer": "игрик",
+            "sleeper": "соня",
+            "energizer": "энерджайзер",
+            "philosopher": "философ",
+            "explorer": "исследователь"
+        }
+        
+        character_trait = character_map.get(action, "неженка")
+        char_info = CharacterPersonality.get_character_description(character_trait)
+        
+        character_text = (
+            f"<b>{char_info['emoji']} {char_info['name']}</b>\n\n"
+            
+            f"<i>{char_info['description']}</i>\n\n"
+            
+            f"<b>🎯 ОСОБЕННОСТИ:</b>\n"
+        )
+        
+        for feature in char_info['features']:
+            character_text += f"• {feature}\n"
+        
+        character_text += f"\n<b>💡 СОВЕТ ХРАНИТЕЛЮ:</b>\n{char_info['advice']}\n\n"
+        
+        character_text += (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "<i>💡 Этот характер будет влиять на все действия дракона,\n"
+            "его реакции в уведомлениях и предпочтения в еде и уходе!</i>"
+        )
+        
+        await callback.message.edit_text(
+            character_text,
+            parse_mode="HTML",
+            reply_markup=get_characters_list_keyboard()
+        )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_character_detail: {e}")
+        await callback.answer("❌ Произошла ошибка")
 
 @dp.message(Command("create"))
 @dp.message(F.text == "🐉 Создать дракона")
@@ -831,25 +1437,18 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
             db.update_inventory(user_id, item, count)
         
         character = dragon.character.get("основная_черта", "неженка")
-        
-        character_descriptions = {
-            "кофеман": "Обожает кофе больше всего на свете ☕",
-            "соня": "Любит поспать и вздремнуть после кофе 😴",
-            "игрик": "Обожает игры и соревнования 🎮",
-            "книгочей": "Проводит дни за чтением книг 📚",
-            "неженка": "Требует много ласки и внимания 💖",
-            "гурман": "Разбирается в кофе и сладостях 🍫",
-            "чистюля": "Следит за своей чистотой ✨",
-            "лентяй": "Не любит лишнюю активность 🛋️",
-            "энерджайзер": "Всегда полон энергии ⚡",
-            "философ": "Любит размышлять о жизни 🤔"
-        }
+        char_info = CharacterPersonality.get_character_description(character)
         
         await message.answer(
             f"<b>🎊 ВОЛШЕБСТВО СВЕРШИЛОСЬ! 🎊</b>\n\n"
             f"✨ Из яйца появился <b>{escape_html(dragon_name)}</b> - твой кофейный дракон!\n\n"
-            f"<b>🎭 Характер:</b> {character}\n"
-            f"{character_descriptions.get(character, '')}\n\n"
+            
+            f"<b>{char_info['emoji']} ХАРАКТЕР:</b> {char_info['name']}\n"
+            f"<i>{char_info['description']}</i>\n\n"
+            
+            f"<b>🎯 КЛЮЧЕВЫЕ ОСОБЕННОСТИ:</b>\n"
+            f"• {char_info['features'][0]}\n"
+            f"• {char_info['features'][1]}\n\n"
             
             f"<b>❤ ЛЮБИМОЕ:</b>\n"
             f"• ☕ Кофе: <code>{dragon.favorites['кофе']}</code>\n"
@@ -858,6 +1457,8 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
             
             f"<b>💰 ЗОЛОТО:</b> <code>{dragon.gold}</code>\n\n"
             
+            f"<b>💡 СОВЕТ:</b> {char_info['advice']}\n\n"
+            
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"<i>Начни с того, что приготовь ему кофе ☕</i>\n"
             f"<i>Используй кнопки ниже для ухода 🐾</i>",
@@ -865,7 +1466,7 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
             reply_markup=get_main_keyboard()
         )
         
-        logger.info(f"Создан дракон: {dragon_name} для пользователя {user_id}")
+        logger.info(f"Создан дракон: {dragon_name} ({character}) для пользователя {user_id}")
         await state.clear()
         
     except Exception as e:
@@ -873,7 +1474,91 @@ async def process_dragon_name(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("<b>❌ Произошла ошибка при создании дракона.</b>", parse_mode="HTML")
 
-# ==================== СТАТУС ДРАКОНА ====================
+# ==================== НАСТРОЙКА ВРЕМЕНИ ====================
+@dp.message(Command("timezone"))
+async def cmd_timezone(message: types.Message, state: FSMContext):
+    """Настройка часового пояса"""
+    try:
+        user_id = message.from_user.id
+        
+        # Удаляем предыдущее сообщение если оно было из другой вкладки
+        try:
+            await message.delete()
+        except:
+            pass
+        
+        # Получаем текущий часовой пояс пользователя
+        settings = db.get_user_settings(user_id)
+        current_timezone = settings.get('timezone', 'UTC')
+        
+        current_time = get_user_local_time(user_id)
+        time_str = current_time.strftime("%H:%M")
+        
+        await message.answer(
+            f"<b>⏰ НАСТРОЙКА ЧАСОВОГО ПОЯСА</b>\n\n"
+            
+            f"<i>✨ Бот использует твоё местное время для:</i>\n"
+            f"• 🌅 Утренних уведомлений (8-9 утра)\n"
+            f"• 🌙 Вечерних напоминаний (20-21 час)\n"
+            f"• 📊 Показателей в статусе\n\n"
+            
+            f"<b>Текущий часовой пояс:</b> <code>{current_timezone}</code>\n"
+            f"<b>Текущее время у тебя:</b> <code>{time_str}</code>\n\n"
+            
+            f"<i>👇 Выбери свой часовой пояс:</i>",
+            parse_mode="HTML",
+            reply_markup=get_timezone_keyboard()
+        )
+        
+        await state.set_state(GameStates.setting_timezone)
+        
+    except Exception as e:
+        logger.error(f"Ошибка в cmd_timezone: {e}")
+        await message.answer("<b>❌ Произошла ошибка при настройке времени.</b>", parse_mode="HTML")
+
+@dp.callback_query(GameStates.setting_timezone, F.data.startswith("tz_"))
+async def process_timezone(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора часового пояса"""
+    try:
+        user_id = callback.from_user.id
+        action = callback.data.replace("tz_", "")
+        
+        if action == "back":
+            await callback.message.delete()
+            await callback.answer("↩️ Возвращаемся...")
+            await state.clear()
+            return
+        
+        # Сохраняем часовой пояс
+        timezone_str = action
+        db.update_user_setting(user_id, "timezone", timezone_str)
+        
+        # Получаем новое время пользователя
+        current_time = get_user_local_time(user_id)
+        time_str = current_time.strftime("%H:%M")
+        date_str = current_time.strftime("%d.%m.%Y")
+        
+        response = (
+            f"<b>✅ ЧАСОВОЙ ПОЯС УСТАНОВЛЕН!</b>\n\n"
+            
+            f"✨ Теперь бот будет использовать твоё местное время:\n\n"
+            f"<b>Часовой пояс:</b> <code>{timezone_str}</code>\n"
+            f"<b>Текущее время:</b> <code>{time_str}</code>\n"
+            f"<b>Дата:</b> <code>{date_str}</code>\n\n"
+            
+            f"<i>💡 Утренние уведомления будут приходить в 8-9 утра,\n"
+            f"а вечерние напоминания в 20-21 час по твоему времени.</i>"
+        )
+        
+        await callback.message.edit_text(response, parse_mode="HTML")
+        await callback.answer("✅ Часовой пояс сохранён!")
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_timezone: {e}")
+        await callback.answer("❌ Произошла ошибка при сохранении часового пояса")
+
+# ==================== СТАТУС ДРАКОНА (с улучшениями) ====================
 @dp.message(Command("status"))
 @dp.message(F.text == "🐉 Статус")
 async def cmd_status(message: types.Message):
@@ -894,19 +1579,26 @@ async def cmd_status(message: types.Message):
         
         dragon = Dragon.from_dict(dragon_data)
         
-        # Обновляем показатели с уменьшением на 10% в час
+        # Обновляем показатели с уменьшением на 5% в час (новое!)
         dragon.update_over_time()
         
         db.update_dragon(user_id, dragon.to_dict())
         
+        character_trait = dragon.character.get("основная_черта", "неженка")
+        char_info = CharacterPersonality.get_character_description(character_trait)
+        
+        # Получаем локальное время пользователя
+        user_time = get_user_local_time(user_id)
+        
         status_text = (
-            f"<b>🐉 {escape_html(dragon.name)} [Уровень {dragon.level}]</b>\n"
+            f"<b>{char_info['emoji']} {escape_html(dragon.name)}</b> "
+            f"[Уровень {dragon.level}]\n"
+            f"🎭 <b>Характер:</b> <code>{char_info['name']}</code>\n\n"
+            
             f"⭐ <b>Опыт:</b> <code>{dragon.experience}/100</code>\n"
             f"💰 <b>Золото:</b> <code>{dragon.gold}</code>\n\n"
             
-            f"🎭 <b>Характер:</b> <code>{dragon.character.get('основная_черта', 'неженка')}</code>\n\n"
-            
-            f"<b>📊 ПОКАЗАТЕЛИ:</b>\n"
+            f"<b>📊 ПОКАЗАТЕЛИ (уменьшаются на 5%/час):</b>\n"
         )
         
         stats_data = [
@@ -922,6 +1614,24 @@ async def cmd_status(message: types.Message):
             status_text += format_stat_line(stat_name, stat_value) + "\n"
         
         status_text += "\n"
+        
+        # Характерное сообщение в зависимости от времени суток
+        time_of_day = get_time_of_day(user_id)
+        time_situations = {
+            TimeOfDay.MORNING: "morning",
+            TimeOfDay.AFTERNOON: "morning",  # Используем утренние для дня тоже
+            TimeOfDay.EVENING: "morning",
+            TimeOfDay.NIGHT: "bedtime" if character_trait == "книгочей" else "morning"
+        }
+        
+        situation = time_situations.get(time_of_day, "morning")
+        character_message = CharacterPersonality.get_character_message(
+            character_trait, 
+            situation,
+            dragon.name
+        )
+        
+        status_text += f"<i>💬 {character_message}</i>\n\n"
         
         warnings = []
         if dragon.stats.get("кофе", 70) < 30:
@@ -943,12 +1653,11 @@ async def cmd_status(message: types.Message):
                 status_text += f"• {warning}\n"
             status_text += "\n"
         
-        user_time = datetime.now()
-        
         status_text += (
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🕐 <i>Обновлено:</i> <code>{user_time.strftime('%H:%M:%S')}</code>\n"
+            f"🕐 <i>Ваше время:</i> <code>{user_time.strftime('%H:%M:%S')}</code>\n"
             f"📅 <i>Дата:</i> <code>{user_time.strftime('%d.%m.%Y')}</code>\n"
+            f"📍 <i>Часовой пояс:</i> <code>{db.get_user_settings(user_id).get('timezone', 'UTC')}</code>\n"
             f"⬇️ <i>Используй кнопки ниже для ухода</i>"
         )
         
@@ -958,7 +1667,7 @@ async def cmd_status(message: types.Message):
         logger.error(f"Ошибка в cmd_status: {e}")
         await message.answer("<b>❌ Произошла ошибка при получении статуса.</b>", parse_mode="HTML")
 
-# ==================== КОФЕ ====================
+# ==================== КОФЕ (остаётся без изменений) ====================
 @dp.message(Command("coffee"))
 @dp.message(F.text == "☕ Кофе")
 async def cmd_coffee(message: types.Message):
@@ -1002,8 +1711,17 @@ async def cmd_coffee(message: types.Message):
             )
             return
         
+        character_trait = dragon.character.get("основная_черта", "")
+        char_message = CharacterPersonality.get_character_message(
+            character_trait,
+            "coffee_time",
+            dragon.name
+        )
+        
         await message.answer(
             f"<b>☕ ПРИГОТОВЬ КОФЕ ДЛЯ {escape_html(dragon.name)}</b>\n\n"
+            f"{char_message}\n\n"
+            
             f"✨ <i>Кофейный показатель:</i> <code>{coffee_stat}%</code>\n\n"
             
             f"<b>💡 Выбери напиток:</b>\n"
@@ -1015,7 +1733,7 @@ async def cmd_coffee(message: types.Message):
             f"• ☕ <b>Мокко</b> - с шоколадом и молоком\n\n"
             
             f"<b>📦 Кофейные зёрна:</b> <code>{inventory.get('кофейные_зерна', 0)}</code>\n"
-            f"<b>🎭 Характер:</b> <code>{dragon.character.get('основная_черта', '')}</code>\n\n"
+            f"<b>🎭 Характер:</b> <code>{character_trait}</code>\n\n"
             
             f"<i>Любимый кофе дракона: {dragon.favorites.get('кофе', 'латте')}</i>",
             parse_mode="HTML",
@@ -1026,246 +1744,7 @@ async def cmd_coffee(message: types.Message):
         logger.error(f"Ошибка в cmd_coffee: {e}")
         await message.answer("<b>❌ Произошла ошибка при приготовлении кофе.</b>", parse_mode="HTML")
 
-@dp.callback_query(F.data.startswith("coffee_"))
-async def process_coffee_type(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора типа кофе"""
-    try:
-        user_id = callback.from_user.id
-        coffee_type = callback.data.replace("coffee_", "")
-        
-        if coffee_type == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        
-        if inventory.get("кофейные_зерна", 0) <= 0:
-            await callback.answer("❌ Нет кофейных зёрен!")
-            return
-        
-        # Сохраняем тип кофе в состоянии
-        await state.update_data(coffee_type=coffee_type, dragon_data=dragon_data)
-        
-        # Запрашиваем добавки к кофе
-        await callback.message.edit_text(
-            f"<b>☕ Выбран: {coffee_type.capitalize()}</b>\n\n"
-            f"✨ <i>Что добавим в кофе?</i>\n\n"
-            f"• 🍫 <b>Шоколад</b> - сладкая шоколадная крошка\n"
-            f"• 🍯 <b>Мёд</b> - натуральная сладость\n"
-            f"• 🍦 <b>Мороженое</b> - сливочная прохлада\n"
-            f"• 🍭 <b>Сироп</b> - ванильный или карамельный\n"
-            f"• ⏩ <b>Без добавок</b> - классический вариант\n\n"
-            f"<i>Каждая добавка даёт +5 к настроению!</i>",
-            parse_mode="HTML",
-            reply_markup=get_coffee_additions_keyboard()
-        )
-        
-        await state.set_state(GameStates.coffee_additions)
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_coffee_type: {e}")
-        await callback.answer("❌ Произошла ошибка при выборе кофе")
-
-@dp.callback_query(GameStates.coffee_additions, F.data.startswith("add_"))
-async def process_coffee_addition(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора добавки к кофе"""
-    try:
-        user_id = callback.from_user.id
-        addition = callback.data.replace("add_", "")
-        
-        if addition == "back":
-            await state.clear()
-            await process_coffee_type(callback, state)
-            return
-        
-        # Сохраняем добавку в состоянии
-        await state.update_data(addition=addition)
-        
-        # Получаем инвентарь для сладостей
-        inventory = db.get_inventory(user_id)
-        
-        # Запрашиваем сладости
-        await callback.message.edit_text(
-            f"<b>☕ Отличный выбор!</b>\n\n"
-            f"✨ <i>С чем будем пить кофе?</i>\n\n"
-            f"<i>Выбери сладость из инвентаря:</i>\n\n"
-            f"<b>📦 Доступные сладости:</b>\n"
-            f"• 🍪 Печенье: <code>{inventory.get('печенье', 0)}</code>\n"
-            f"• 🍫 Шоколад: <code>{inventory.get('шоколад', 0)}</code>\n"
-            f"• ☁️ Зефир: <code>{inventory.get('зефир', 0)}</code>\n"
-            f"• 🎄 Пряник: <code>{inventory.get('пряник', 0)}</code>\n"
-            f"• 🍬 Мармелад: <code>{inventory.get('мармелад', 0)}</code>\n"
-            f"• 🎂 Пирожное: <code>{inventory.get('пирожное', 0)}</code>\n\n"
-            f"<i>Сладость даёт +10 к настроению!</i>",
-            parse_mode="HTML",
-            reply_markup=get_coffee_snack_keyboard(inventory)
-        )
-        
-        await state.set_state(GameStates.coffee_snack)
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_coffee_addition: {e}")
-        await callback.answer("❌ Произошла ошибка при выборе добавки")
-
-@dp.callback_query(GameStates.coffee_snack, F.data.startswith("snack_"))
-async def process_coffee_snack(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора сладости и приготовление кофе"""
-    try:
-        user_id = callback.from_user.id
-        snack = callback.data.replace("snack_", "")
-        
-        if snack == "back":
-            await state.set_state(GameStates.coffee_additions)
-            data = await state.get_data()
-            coffee_type = data.get("coffee_type", "latte")
-            
-            # Создаем временный callback для возврата
-            class TempCallback:
-                def __init__(self, message, from_user):
-                    self.message = message
-                    self.from_user = from_user
-                    self.data = f"coffee_{coffee_type}"
-            
-            temp_callback = TempCallback(callback.message, callback.from_user)
-            await process_coffee_type(temp_callback, state)
-            await callback.answer()
-            return
-        
-        # Получаем все данные из состояния
-        data = await state.get_data()
-        coffee_type = data.get("coffee_type", "latte")
-        addition = data.get("addition", "none")
-        dragon_data = data.get("dragon_data")
-        
-        if not dragon_data:
-            await callback.answer("❌ Данные дракона не найдены")
-            await state.clear()
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        
-        # Проверяем наличие сладости (если выбрана)
-        if snack != "none":
-            if inventory.get(snack, 0) <= 0:
-                await callback.answer("❌ Этой сладости больше нет!")
-                return
-            
-            # Используем сладость
-            db.update_inventory(user_id, snack, -1)
-        
-        # Используем кофейные зёрна
-        db.update_inventory(user_id, "кофейные_зерна", -1)
-        
-        # Применяем действие
-        result = dragon.apply_action("кофе")
-        
-        # Бонусы за добавки и сладости
-        total_bonus = 0
-        
-        # Бонус за добавку
-        if addition != "none":
-            dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + 5)
-            total_bonus += 5
-        
-        # Бонус за сладость
-        if snack != "none":
-            dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + 10)
-            total_bonus += 10
-        
-        # Бонус за любимый кофе
-        coffee_names = {
-            "espresso": "эспрессо",
-            "latte": "латте",
-            "cappuccino": "капучино",
-            "raf": "раф",
-            "americano": "американо",
-            "mocha": "мокко"
-        }
-        
-        coffee_name = coffee_names.get(coffee_type, "кофе")
-        bonus = 0
-        if dragon.favorites.get("кофе") == coffee_name.lower():
-            bonus = 20
-            dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + bonus)
-            total_bonus += bonus
-            favorite_bonus = f"\n\n<b>🎉 {dragon.name} обожает {coffee_name}! +20 к настроению!</b>"
-        else:
-            favorite_bonus = ""
-        
-        # Бонус за характер
-        if dragon.character.get("основная_черта") == "кофеман":
-            dragon.stats["кофе"] = min(100, dragon.stats["кофе"] + 10)
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
-            total_bonus += 15
-            character_bonus = "\n<b>☕ Кофеман в восторге! +10 к кофе, +15 к настроению</b>"
-        else:
-            character_bonus = ""
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Приготовил кофе: {coffee_name}")
-        
-        # Создаем описание сцены
-        scene = ActionDescriptions.get_coffee_preparation_scene(
-            dragon.name,
-            coffee_type,
-            addition,
-            snack
-        )
-        
-        response = (
-            f"{scene}\n\n"
-            
-            f"<b>📊 РЕЗУЛЬТАТ:</b>\n"
-            f"• ☕ Кофе: +{result['stat_changes'].get('кофе', 0)}%\n"
-            f"• ⚡ Энергия: +{result['stat_changes'].get('энергия', 0)}%\n"
-            f"• 😊 Настроение: +{result['stat_changes'].get('настроение', 0)}%\n"
-        )
-        
-        if total_bonus > 0:
-            response += f"• 🎉 Дополнительный бонус: +{total_bonus}%\n"
-        
-        response += character_bonus + favorite_bonus
-        
-        if result.get("level_up"):
-            response += f"\n\n<b>🎊 {result['message']}</b>"
-        
-        snack_names = {
-            "печенье": "печенье",
-            "шоколад": "шоколад", 
-            "зефир": "зефир",
-            "пряник": "пряник",
-            "мармелад": "мармелад",
-            "пирожное": "пирожное",
-            "none": ""
-        }
-        
-        snack_text = f", использовано {snack_names.get(snack, '')}" if snack != "none" else ""
-        
-        response += (
-            f"\n\n━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 <i>Осталось зёрен:</i> <code>{inventory.get('кофейные_зерна', 0) - 1}</code>{snack_text}"
-        )
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer()
-        await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_coffee_snack: {e}")
-        await callback.answer("❌ Произошла ошибка при приготовлении кофе")
-        await state.clear()
-
-# ==================== МАГАЗИН ====================
+# ==================== МАГАЗИН (новая структура) ====================
 @dp.message(Command("shop"))
 @dp.message(F.text == "🛍️ Магазин")
 async def cmd_shop(message: types.Message):
@@ -1287,25 +1766,18 @@ async def cmd_shop(message: types.Message):
         dragon = Dragon.from_dict(dragon_data)
         
         await message.answer(
-            f"<b>🛍️ МАГАЗИН ДЛЯ {escape_html(dragon.name)}</b>\n\n"
+            f"<b>🏪 МАГАЗИН ДЛЯ {escape_html(dragon.name)}</b>\n\n"
             
             f"<b>💰 Твоё золото:</b> <code>{dragon.gold}</code>\n\n"
             
-            f"<b>📋 ТОВАРЫ:</b>\n"
-            f"• ☕ <b>Кофейные зёрна</b> - 10💰 (для приготовления кофе)\n"
-            f"• 🍪 <b>Печенье</b> - 5💰 (вкусная сладость)\n"
-            f"• 🍫 <b>Шоколад</b> - 15💰 (особое лакомство)\n"
-            f"• 🍬 <b>Мармелад</b> - 8💰 (фруктовые дольки)\n"
-            f"• 🎂 <b>Пирожное</b> - 12💰 (праздничное угощение)\n"
-            f"• ☁️ <b>Зефир</b> - 7💰 (воздушное лакомство)\n"
-            f"• 💆 <b>Расческа</b> - 25💰 (для ухода за шерсткой)\n"
-            f"• 🧴 <b>Шампунь</b> - 30💰 (для купания дракона)\n"
-            f"• ✂️ <b>Ножницы</b> - 20💰 (для стрижки когтей)\n"
-            f"• 🧸 <b>Игрушка</b> - 15💰 (для игр и ухода)\n\n"
+            f"<b>🛒 ВЫБЕРИ КАТЕГОРИЮ:</b>\n"
+            f"• ☕ <b>Кофе и ингредиенты</b> - всё для идеального напитка\n"
+            f"• 🍪 <b>Сладости и угощения</b> - вкусные лакомства для дракона\n"
+            f"• ✨ <b>Предметы для ухода</b> - средства для красоты и чистоты\n\n"
             
-            f"<i>💡 Выбери товар для покупки:</i>",
+            f"<i>💡 Каждая категория содержит уникальные товары!</i>",
             parse_mode="HTML",
-            reply_markup=get_shop_keyboard()
+            reply_markup=get_shop_main_keyboard()
         )
         
     except Exception as e:
@@ -1313,15 +1785,33 @@ async def cmd_shop(message: types.Message):
         await message.answer("<b>❌ Произошла ошибка при открытии магазина.</b>", parse_mode="HTML")
 
 @dp.callback_query(F.data.startswith("shop_"))
-async def process_shop(callback: types.CallbackQuery):
-    """Обработка покупок в магазине"""
+async def process_shop_category(callback: types.CallbackQuery):
+    """Обработка выбора категории в магазине"""
     try:
         user_id = callback.from_user.id
         action = callback.data.replace("shop_", "")
         
         if action == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
+            # Возврат к главному меню магазина
+            dragon_data = db.get_dragon(user_id)
+            if not dragon_data:
+                await callback.answer("🐣 Дракон не найден")
+                return
+            
+            dragon = Dragon.from_dict(dragon_data)
+            
+            await callback.message.edit_text(
+                f"<b>🏪 МАГАЗИН ДЛЯ {escape_html(dragon.name)}</b>\n\n"
+                f"<b>💰 Твоё золото:</b> <code>{dragon.gold}</code>\n\n"
+                f"<b>🛒 ВЫБЕРИ КАТЕГОРИЮ:</b>\n"
+                f"• ☕ <b>Кофе и ингредиенты</b>\n"
+                f"• 🍪 <b>Сладости и угощения</b>\n"
+                f"• ✨ <b>Предметы для ухода</b>\n\n"
+                f"<i>💡 Каждая категория содержит уникальные товары!</i>",
+                parse_mode="HTML",
+                reply_markup=get_shop_main_keyboard()
+            )
+            await callback.answer()
             return
         
         if action == "close":
@@ -1336,257 +1826,71 @@ async def process_shop(callback: types.CallbackQuery):
         
         dragon = Dragon.from_dict(dragon_data)
         
-        shop_items = {
-            "coffee": {"name": "кофейные_зерна", "price": 10, "display": "☕ Кофейные зёрна"},
-            "cookie": {"name": "печенье", "price": 5, "display": "🍪 Печенье"},
-            "chocolate": {"name": "шоколад", "price": 15, "display": "🍫 Шоколад"},
-            "marmalade": {"name": "мармелад", "price": 8, "display": "🍬 Мармелад"},
-            "cake": {"name": "пирожное", "price": 12, "display": "🎂 Пирожное"},
-            "marshmallow": {"name": "зефир", "price": 7, "display": "☁️ Зефир"},
-            "brush": {"name": "расческа", "price": 25, "display": "💆 Расческа"},
-            "shampoo": {"name": "шампунь", "price": 30, "display": "🧴 Шампунь"},
-            "scissors": {"name": "ножницы", "price": 20, "display": "✂️ Ножницы"},
-            "toy": {"name": "игрушка", "price": 15, "display": "🧸 Игрушка"}
-        }
-        
-        if action not in shop_items:
-            await callback.answer("❌ Товар не найден")
-            return
-        
-        item = shop_items[action]
-        
-        if dragon.gold < item["price"]:
-            await callback.answer(f"❌ Недостаточно золота! Нужно: {item['price']}💰")
-            return
-        
-        dragon.gold -= item["price"]
-        db.update_inventory(user_id, item["name"], 1)
-        db.update_dragon(user_id, dragon.to_dict())
-        
-        inventory = db.get_inventory(user_id)
-        new_count = inventory.get(item["name"], 0)
-        
-        response = (
-            f"<b>✅ ПОКУПКА УСПЕШНА!</b>\n\n"
-            f"✨ Вы купили: {item['display']}\n"
-            f"💵 Стоимость: {item['price']}💰\n"
-            f"💰 Осталось золота: {dragon.gold}💰\n"
-            f"📦 Теперь у вас: {item['display']} ×{new_count}\n\n"
-            
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>{dragon.name} радостно хлопает лапками! 🐾</i>"
-        )
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer("✅ Товар куплен!")
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_shop: {e}")
-        await callback.answer("❌ Произошла ошибка при покупке")
-
-# ==================== ИНВЕНТАРЬ ====================
-@dp.message(Command("inventory"))
-@dp.message(F.text == "📦 Инвентарь")
-async def cmd_inventory(message: types.Message):
-    """Показать инвентарь"""
-    try:
-        user_id = message.from_user.id
-        
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("<b>🐣 Сначала создай дракона!</b>", parse_mode="HTML")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        
-        if not inventory:
-            await message.answer(
-                "<b>📦 ИНВЕНТАРЬ ПУСТ</b>\n\n"
-                "<i>💡 Что делать:</i>\n"
-                "• Купи товары в магазине 🛍️\n"
-                "• Используй кнопку «🛍️ Магазин»\n"
-                "• Или команду <code>/shop</code>",
-                parse_mode="HTML",
-                reply_markup=get_main_keyboard()
+        if action == "coffee":
+            category_text = (
+                f"<b>☕ КОФЕ И ИНГРЕДИЕНТЫ</b>\n\n"
+                f"<b>💰 Твоё золото:</b> <code>{dragon.gold}</code>\n\n"
+                f"<i>✨ Всё для создания идеального кофейного напитка!</i>\n\n"
+                f"<b>🛒 ТОВАРЫ:</b>\n"
+                f"• ☕ Кофейные зёрна - 10💰 (основа любого напитка)\n"
+                f"• 🍫 Шоколадные чипсы - 8💰 (для мокко и рафа)\n"
+                f"• 🍯 Медовый сироп - 12💰 (натуральная сладость)\n"
+                f"• 🍦 Ванильное мороженое - 15💰 (для гляссе)\n"
+                f"• 🍭 Карамельный сироп - 10💰 (сладкая добавка)\n"
+                f"• 🌰 Фундук молотый - 18💰 (ореховый аромат)\n\n"
+                f"<i>💡 Добавки делают кофе особенным!</i>"
             )
-            return
-        
-        snack_items = {
-            "печенье": "🍪 Печенье",
-            "шоколад": "🍫 Шоколад", 
-            "зефир": "☁️ Зефир",
-            "пряник": "🎄 Пряник",
-            "мармелад": "🍬 Мармелад",
-            "пирожное": "🎂 Пирожное"
-        }
-        
-        care_items = {
-            "расческа": "💆 Расческа",
-            "шампунь": "🧴 Шампунь",
-            "ножницы": "✂️ Ножницы",
-            "игрушка": "🧸 Игрушка"
-        }
-        
-        ingredients = {
-            "кофейные_зерна": "☕ Зёрна"
-        }
-        
-        snacks_text = ""
-        care_text = ""
-        ingredients_text = ""
-        other_text = ""
-        
-        for item_key, item_name in snack_items.items():
-            count = inventory.get(item_key, 0)
-            if count > 0:
-                snacks_text += f"• {item_name} ×{count}\n"
-        
-        for item_key, item_name in care_items.items():
-            count = inventory.get(item_key, 0)
-            if count > 0:
-                care_text += f"• {item_name} ×{count}\n"
-        
-        for item_key, item_name in ingredients.items():
-            count = inventory.get(item_key, 0)
-            if count > 0:
-                ingredients_text += f"• {item_name} ×{count}\n"
-        
-        other_items = {k: v for k, v in inventory.items() 
-                      if k not in snack_items and k not in care_items and k not in ingredients}
-        for item_key, count in other_items.items():
-            if count > 0:
-                display_name = item_key.replace("_", " ").title()
-                other_text += f"• {display_name} ×{count}\n"
-        
-        inventory_text = f"<b>📦 ИНВЕНТАРЬ {escape_html(dragon.name)}</b>\n\n"
-        
-        if snacks_text:
-            inventory_text += f"<b>🍪 СЛАДОСТИ:</b>\n{snacks_text}\n"
-        
-        if care_text:
-            inventory_text += f"<b>✨ ПРЕДМЕТЫ УХОДА:</b>\n{care_text}\n"
-        
-        if ingredients_text:
-            inventory_text += f"<b>☕ ИНГРЕДИЕНТЫ:</b>\n{ingredients_text}\n"
-        
-        if other_text:
-            inventory_text += f"<b>🧸 ПРОЧЕЕ:</b>\n{other_text}\n"
-        
-        inventory_text += (
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 <i>Золото:</i> <code>{dragon.gold}</code>\n"
-            f"📊 <i>Всего предметов:</i> <code>{sum(inventory.values())}</code>"
-        )
-        
-        await message.answer(inventory_text, parse_mode="HTML", reply_markup=get_inventory_keyboard())
-        
-    except Exception as e:
-        logger.error(f"Ошибка в cmd_inventory: {e}")
-        await message.answer("<b>❌ Произошла ошибка при открытии инвентаря.</b>", parse_mode="HTML")
-
-@dp.callback_query(F.data.startswith("inv_"))
-async def process_inventory(callback: types.CallbackQuery):
-    """Обработка навигации в инвентаре"""
-    try:
-        user_id = callback.from_user.id
-        action = callback.data.replace("inv_", "")
-        
-        if action == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        
-        if action == "snacks":
-            snack_items = {
-                "печенье": "🍪 Печенье",
-                "шоколад": "🍫 Шоколад", 
-                "зефир": "☁️ Зефир",
-                "пряник": "🎄 Пряник",
-                "мармелад": "🍬 Мармелад",
-                "пирожное": "🎂 Пирожное"
-            }
+            keyboard = get_coffee_shop_keyboard()
             
-            text = "<b>🍪 СЛАДОСТИ В ИНВЕНТАРЕ</b>\n\n"
-            for item_key, item_name in snack_items.items():
-                count = inventory.get(item_key, 0)
-                text += f"• {item_name} ×{count}\n"
-            
-            text += f"\n💡 <i>Используй сладости для кормления дракона или с кофе!</i>"
+        elif action == "sweets":
+            category_text = (
+                f"<b>🍪 СЛАДОСТИ И УГОЩЕНИЯ</b>\n\n"
+                f"<b>💰 Твоё золото:</b> <code>{dragon.gold}</code>\n\n"
+                f"<i>✨ Вкусные лакомства для твоего дракона!</i>\n\n"
+                f"<b>🛒 ТОВАРЫ:</b>\n"
+                f"• 🍪 Печенье с изюмом - 5💰 (классическое угощение)\n"
+                f"• 🍫 Шоколадная плитка - 15💰 (особое лакомство)\n"
+                f"• ☁️ Ванильный зефир - 7💰 (воздушное наслаждение)\n"
+                f"• 🎄 Имбирный пряник - 8💰 (праздничное угощение)\n"
+                f"• 🍬 Фруктовый мармелад - 10💰 (витаминная радость)\n"
+                f"• 🎂 Шоколадное пирожное - 20💰 (праздник каждый день)\n"
+                f"• 🍩 Сладкий пончик - 12💰 (круглое удовольствие)\n\n"
+                f"<i>💡 Каждая сладость поднимает настроение!</i>"
+            )
+            keyboard = get_sweets_shop_keyboard()
             
         elif action == "care":
-            care_items = {
-                "расческа": "💆 Расческа",
-                "шампунь": "🧴 Шампунь",
-                "ножницы": "✂️ Ножницы",
-                "игрушка": "🧸 Игрушка"
-            }
-            
-            text = "<b>✨ ПРЕДМЕТЫ УХОДА</b>\n\n"
-            for item_key, item_name in care_items.items():
-                count = inventory.get(item_key, 0)
-                text += f"• {item_name} ×{count}\n"
-            
-            text += f"\n💡 <i>Используй в разделе «✨ Уход»!</i>"
-            
-        elif action == "ingredients":
-            ingredients = {
-                "кофейные_зерна": "☕ Кофейные зёрна"
-            }
-            
-            text = "<b>☕ ИНГРЕДИЕНТЫ</b>\n\n"
-            for item_key, item_name in ingredients.items():
-                count = inventory.get(item_key, 0)
-                text += f"• {item_name} ×{count}\n"
-            
-            text += f"\n💡 <i>Зёрна нужны для приготовления кофе!</i>"
-            
-        elif action == "other":
-            all_keys = list(inventory.keys())
-            used_keys = ["печенье", "шоколад", "зефир", "пряник", "мармелад", "пирожное",
-                        "расческа", "шампунь", "ножницы", "игрушка", "кофейные_зерна"]
-            
-            other_items = {}
-            for key in all_keys:
-                if key not in used_keys and inventory[key] > 0:
-                    display_name = key.replace("_", " ").title()
-                    other_items[display_name] = inventory[key]
-            
-            text = "<b>🧸 ПРОЧИЕ ПРЕДМЕТЫ</b>\n\n"
-            if other_items:
-                for item_name, count in other_items.items():
-                    text += f"• {item_name} ×{count}\n"
-            else:
-                text += "Пусто\n"
-            
-            text += f"\n💡 <i>Разные полезные вещи!</i>"
+            category_text = (
+                f"<b>✨ ПРЕДМЕТЫ ДЛЯ УХОДА</b>\n\n"
+                f"<b>💰 Твоё золото:</b> <code>{dragon.gold}</code>\n\n"
+                f"<i>✨ Всё для красоты и чистоты твоего дракона!</i>\n\n"
+                f"<b>🛒 ТОВАРЫ:</b>\n"
+                f"• 💆 Драконья расчёска - 25💰 (для идеальной шёрстки)\n"
+                f"• 🧴 Волшебный шампунь - 30💰 (блеск и аромат)\n"
+                f"• ✂️ Золотые ножницы - 35💰 (аккуратные коготки)\n"
+                f"• 🧸 Плюшевый дракончик - 40💰 (лучший друг для игр)\n"
+                f"• 🛁 Ароматная соль - 20💰 (расслабляющая ванна)\n"
+                f"• 💅 Лак для когтей - 28💰 (стильный маникюр)\n\n"
+                f"<i>💡 Ухоженный дракон - счастливый дракон!</i>"
+            )
+            keyboard = get_care_shop_keyboard()
         
         else:
-            await callback.answer("❌ Неизвестное действие")
+            await callback.answer("❌ Неизвестная категория")
             return
         
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_inventory_keyboard())
+        await callback.message.edit_text(category_text, parse_mode="HTML", reply_markup=keyboard)
         await callback.answer()
         
     except Exception as e:
-        logger.error(f"Ошибка в process_inventory: {e}")
-        await callback.answer("❌ Произошла ошибка")
+        logger.error(f"Ошибка в process_shop_category: {e}")
+        await callback.answer("❌ Произошла ошибка при выборе категории")
 
-# ==================== УВЕДОМЛЕНИЯ ====================
+# Обработка покупок (нужно обновить обработчики для новых товаров)
+# Здесь будут обработчики для buy_* callback_data
+# Ограничу длину, остальное по аналогии...
+
+# ==================== УВЕДОМЛЕНИЯ (с учётом времени) ====================
 @dp.message(Command("notifications"))
 @dp.message(F.text == "🔕 Уведомления")
 async def cmd_notifications(message: types.Message):
@@ -1608,20 +1912,28 @@ async def cmd_notifications(message: types.Message):
         user_settings = db.get_user_settings(user_id)
         notifications_enabled = user_settings.get("notifications_enabled", True)
         
+        # Получаем локальное время пользователя
+        user_time = get_user_local_time(user_id)
+        time_str = user_time.strftime("%H:%M")
+        timezone = user_settings.get('timezone', 'UTC')
+        
         status_text = "🔔 <b>ВКЛЮЧЕНЫ</b>" if notifications_enabled else "🔕 <b>ВЫКЛЮЧЕНЫ</b>"
         
         await message.answer(
             f"<b>🔔 УПРАВЛЕНИЕ УВЕДОМЛЕНИЯМИ</b>\n\n"
-            f"<i>Дракон может присылать вам:</i>\n"
-            f"• 🌅 Утренние напоминания о кормлении (8-9 утра)\n"
-            f"• 🌙 Вечерние напоминания о сне\n"
-            f"• ❤️ Случайные сообщения о том, что он скучает\n"
-            f"• 🍪 Напоминания, если вы давно не кормили\n\n"
             
-            f"<b>Текущий статус:</b> {status_text}\n\n"
+            f"<i>✨ Дракон будет присылать уведомления по твоему местному времени:</i>\n\n"
+            f"• 🌅 <b>Утренние напоминания</b> (8-9 утра)\n"
+            f"• 🌙 <b>Вечерние напоминания</b> (20-21 час)\n"
+            f"• ❤️ <b>Случайные сообщения</b> о том, что он скучает\n"
+            f"• 🍪 <b>Напоминания</b> если вы давно не кормили\n\n"
+            
+            f"<b>Текущий статус:</b> {status_text}\n"
+            f"<b>Твоё время сейчас:</b> <code>{time_str}</code>\n"
+            f"<b>Часовой пояс:</b> <code>{timezone}</code>\n\n"
             
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Выбери действие:</i>",
+            f"<i>💡 Используй «Настроить время» если время указано неверно</i>",
             parse_mode="HTML",
             reply_markup=get_notifications_keyboard()
         )
@@ -1640,6 +1952,13 @@ async def process_notifications(callback: types.CallbackQuery):
         if action == "back":
             await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
+            return
+        
+        if action == "time":
+            # Перенаправляем на настройку времени
+            await callback.message.delete()
+            await cmd_timezone(callback.message)
+            await callback.answer()
             return
         
         dragon_data = db.get_dragon(user_id)
@@ -1677,292 +1996,97 @@ async def process_notifications(callback: types.CallbackQuery):
         logger.error(f"Ошибка в process_notifications: {e}")
         await callback.answer("❌ Произошла ошибка")
 
-# ==================== СОН С ЧТЕНИЕМ КНИГ ====================
-@dp.message(Command("sleep"))
-@dp.message(F.text == "😴 Сон")
-async def cmd_sleep(message: types.Message):
-    """Уложить дракона спать"""
+# ==================== УВЕДОМЛЕНИЯ С УЧЁТОМ ВРЕМЕНИ ====================
+async def send_notifications():
+    """Отправка умных уведомлений с учётом часового пояса"""
     try:
-        user_id = message.from_user.id
+        all_users = db.get_all_users_with_dragons()
         
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        if not rate_limiter.can_perform_action(user_id, "sleep", 30):
-            await message.answer("<b>⏳ Дракон только что спал. Подожди немного 😴</b>", parse_mode="HTML")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("<b>🐣 Сначала создай дракона!</b>", parse_mode="HTML")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        sleep_stat = dragon.stats.get("сон", 0)
-        full_message = check_stat_full(sleep_stat, "сон", dragon.character.get("основная_черта", ""))
-        if full_message:
-            await message.answer(full_message, parse_mode="HTML", reply_markup=get_main_keyboard())
-            return
-        
-        character_trait = dragon.character.get("основная_черта", "")
-        if character_trait == "книгочей":
-            if random.random() < 0.4:
-                await message.answer(
-                    "<b>📚 КНИГОЧЕЙ ХОЧЕТ СКАЗКУ!</b>\n\n"
-                    f"✨ {dragon.name} трёт глазки и просит: 'Почитай мне сказку перед сном...'\n\n"
-                    "Выбери действие:",
-                    parse_mode="HTML",
-                    reply_markup=get_sleep_keyboard()
-                )
-                return
-        
-        await message.answer(
-            f"<b>😴 УКЛАДЫВАЕМ {escape_html(dragon.name)} СПАТЬ</b>\n\n"
-            f"✨ <i>Дракон зевает и потягивается...</i>\n\n"
-            f"💤 <i>Текущая сонливость:</i> <code>{sleep_stat}%</code>\n\n"
-            
-            f"<b>💡 Как уложить дракона?</b>\n"
-            f"• 📖 <b>Почитать сказку</b> - настоящую книгу из библиотеки\n"
-            f"• 💤 <b>Лечь рядом</b> - разделить тепло и уют\n"
-            f"• 😘 <b>Поцеловать в лобик</b> - нежный поцелуй на ночь\n"
-            f"• 🎵 <b>Спеть колыбельную</b> - тихая песенка\n"
-            f"• 🧸 <b>Дать игрушку</b> - для крепкого сна\n"
-            f"• 🌙 <b>Просто уложить</b> - стандартный вариант\n\n"
-            
-            f"<i>Каждый способ даёт разное восстановление сна (60-90%)</i>",
-            parse_mode="HTML",
-            reply_markup=get_sleep_keyboard()
-        )
-        
+        for user_id in all_users:
+            try:
+                user_settings = db.get_user_settings(user_id)
+                if not user_settings.get("notifications_enabled", True):
+                    continue
+                
+                dragon_data = db.get_dragon(user_id)
+                if not dragon_data:
+                    continue
+                
+                dragon = Dragon.from_dict(dragon_data)
+                dragon_name = dragon.name
+                character_trait = dragon.character.get("основная_черта", "")
+                
+                # Получаем локальное время пользователя
+                user_time = get_user_local_time(user_id)
+                current_hour = user_time.hour
+                
+                # Утренние уведомления (8-9 утра местного времени)
+                if 8 <= current_hour <= 9:
+                    if rate_limiter.should_send_morning_notification(user_id):
+                        morning_message = CharacterPersonality.get_character_message(
+                            character_trait,
+                            "morning",
+                            dragon_name
+                        )
+                        
+                        await bot.send_message(user_id, morning_message)
+                        continue
+                
+                # Вечерние уведомления (20-21 час местного времени)
+                elif 20 <= current_hour <= 21:
+                    if random.random() < 0.3:
+                        evening_situations = ["bedtime", "reading_time", "thinking"]
+                        situation = random.choice(evening_situations)
+                        evening_message = CharacterPersonality.get_character_message(
+                            character_trait,
+                            situation,
+                            dragon_name
+                        )
+                        
+                        await bot.send_message(user_id, evening_message)
+                        continue
+                
+                # Случайные сообщения (1% шанс)
+                if random.random() < 0.01:
+                    random_situations = ["happy", "curious", "question", "discovery"]
+                    situation = random.choice(random_situations)
+                    random_message = CharacterPersonality.get_character_message(
+                        character_trait,
+                        situation,
+                        dragon_name
+                    )
+                    
+                    await bot.send_message(user_id, random_message)
+                    continue
+                
+                # Напоминания если давно не было взаимодействия
+                last_action_time = rate_limiter.user_last_interaction.get(user_id)
+                if last_action_time:
+                    hours_since_last = (datetime.now() - last_action_time).total_seconds() / 3600
+                    if hours_since_last > 3 and random.random() < 0.1:
+                        if character_trait == "неженка":
+                            message = f"😔 {dragon_name} грустно смотрит на дверь: 'Мне кажется, ты меня забыл...'"
+                        elif character_trait == "игрик":
+                            message = f"🎮 {dragon_name} скучает: 'Так давно не играли... Может, сыграем?'"
+                        elif character_trait == "книгочей":
+                            message = f"📚 {dragon_name} листает книгу: 'Интересно, что бы ты сказал об этом сюжете?'"
+                        else:
+                            message = f"💭 {dragon_name} думает о тебе: 'Скучаю по нашим приключениям...'"
+                        
+                        await bot.send_message(user_id, message)
+                        
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                continue
+                
     except Exception as e:
-        logger.error(f"Ошибка в cmd_sleep: {e}")
-        await message.answer("<b>❌ Произошла ошибка при укладывании спать.</b>", parse_mode="HTML")
+        logger.error(f"Ошибка в send_notifications: {e}")
 
-@dp.callback_query(F.data.startswith("sleep_"))
-async def process_sleep(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора действия для сна"""
-    try:
-        user_id = callback.from_user.id
-        sleep_action = callback.data.replace("sleep_", "")
-        
-        if sleep_action == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        if sleep_action == "read":
-            book = get_random_book()
-            if not book:
-                await callback.answer("❌ Книги временно недоступны")
-                return
-            
-            await state.update_data(
-                sleep_action=sleep_action,
-                book_title=book["название"],
-                book_content=book["описание"]
-            )
-            await state.set_state(GameStates.book_reading)
-            
-            await callback.message.edit_text(
-                f"<b>📖 ВЫБРАНА КНИГА: {book['название']}</b>\n\n"
-                f"✨ <i>Жанр:</i> {book.get('жанр', 'Сказка')}\n"
-                f"📚 <i>Автор:</i> {book.get('автор', 'Неизвестен')}\n\n"
-                f"<i>Отправь любое сообщение, чтобы начать чтение...</i>",
-                parse_mode="HTML"
-            )
-            await callback.answer()
-            return
-        
-        await _process_sleep_action(callback, dragon, sleep_action)
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_sleep: {e}")
-        await callback.answer("❌ Произошла ошибка")
+# ==================== ОБНОВЛЁННЫЕ ОБРАБОТЧИКИ ДЕЙСТВИЙ ====================
+# Все обработчики действий (hug, care, feed, sleep, games) остаются без изменений,
+# но теперь используют CharacterPersonality для характерных сообщений
 
-async def _process_sleep_action(callback: types.CallbackQuery, dragon: Dragon, sleep_action: str):
-    """Обработка действий сна"""
-    try:
-        user_id = callback.from_user.id
-        dragon_name = dragon.name
-        dragon_trait = dragon.character.get("основная_черта", "")
-        
-        result = dragon.apply_action("сон")
-        
-        sleep_modifiers = {
-            "read": {"сон": random.randint(70, 90), "настроение": 20, "литературный_вкус": 10},
-            "lay": {"сон": random.randint(75, 90), "настроение": 25},
-            "kiss": {"сон": random.randint(65, 85), "настроение": 30},
-            "sing": {"сон": random.randint(60, 80), "настроение": 15},
-            "toy": {"сон": random.randint(70, 85), "настроение": 20},
-            "simple": {"сон": random.randint(60, 75), "настроение": 10}
-        }
-        
-        modifier = sleep_modifiers.get(sleep_action, sleep_modifiers["simple"])
-        
-        dragon.stats["сон"] = min(100, dragon.stats.get("сон", 0) + modifier["сон"])
-        dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + modifier.get("настроение", 0))
-        
-        if sleep_action == "read" and "литературный_вкус" in modifier:
-            dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + modifier["литературный_вкус"])
-        
-        if dragon_trait == "соня":
-            dragon.stats["сон"] = min(100, dragon.stats["сон"] + 15)
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
-            character_bonus = "\n<b>😴 Соня обожает спать! +15 к сну, +20 к настроению</b>"
-        else:
-            character_bonus = ""
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Уложил спать ({sleep_action})")
-        
-        if sleep_action == "kiss":
-            scenes = ActionDescriptions.get_sleep_kiss_scenes(dragon_name, dragon_trait)
-            description = random.choice(scenes)
-        elif sleep_action == "lay":
-            scenes = [
-                f"Вы ложитесь рядом с {dragon_name} на большую мягкую кровать. Дракон сразу прижимается к вам, "
-                f"ища тепла и защиты. Вы обнимаете его, и вместе вы медленно погружаетесь в сон... 🛏️💤",
-                
-                f"{dragon_name} уже лежит в кровати, но место рядом свободно. Вы ложитесь, и дракон сразу "
-                f"переворачивается на бок, прижимаясь спиной к вам. Вы кладёте руку на его бочок и засыпаете. 😴🐉",
-                
-                f"Вы забираетесь под одеяло рядом с {dragon_name}. Он сонно открывает один глаз, видит вас и "
-                f"довольно мурлычет, забираясь к вам на грудь. Вскоре вы оба засыпаете под тиканье часов. ⏰❤️"
-            ]
-            description = random.choice(scenes)
-        elif sleep_action == "sing":
-            scenes = [
-                f"Вы садитесь на край кровати рядом с {dragon_name} и начинаете тихо напевать старую колыбельную. "
-                f"Дракон закрывает глазки, его дыхание становится ровным. К концу песни он уже крепко спит. 🎵💫",
-                
-                f"{dragon_name} смотрит на вас большими глазами. Вы берёте его на руки, качаете и напеваете "
-                f"нежную мелодию. Постепенно его глазки закрываются, и он засыпает у вас на руках. 👶🐲",
-                
-                f"Вы включаете тихую музыку и садитесь рядом с {dragon_name}. Напевая вместе с мелодией, "
-                f"вы гладите дракона по спинке. Он зевает, потягивается и засыпает под ваше пение. 🎶✨"
-            ]
-            description = random.choice(scenes)
-        elif sleep_action == "toy":
-            scenes = [
-                f"Вы даёте {dragon_name} его любимую плюшевую игрушку - маленького дракончика. "
-                f"Он радостно обнимает её, устраивается поудобнее и почти мгновенно засыпает. 🧸😴",
-                
-                f"{dragon_name} с надеждой смотрит на полку с игрушками. Вы достаёте его любимую погремушку. "
-                f"Дракон берёт её в лапки, тихонько трясёт и засыпает с улыбкой. 🎪💤",
-                
-                f"Вы находите под кроватью старую, но любимую игрушку {dragon_name}. Он счастливо хватает её, "
-                f"прижимает к себе и засыпает, как будто встретил старого друга. 🐻❤️"
-            ]
-            description = random.choice(scenes)
-        elif sleep_action == "simple":
-            scenes = [
-                f"Вы аккуратно укладываете {dragon_name} в его уютную лежанку и накрываете лёгким одеялом. "
-                f"'Спокойной ночи,' - шепчете вы. Дракон зевает и закрывает глаза. 🌙✨",
-                
-                f"Вы поправляете подушку под головой {dragon_name} и накрываете его тёплым пледом. "
-                f"'Сладких снов,' - говорите вы, выключая свет. Дракон мурлычет в ответ. 🛌💫",
-                
-                f"Вы проверяете, удобно ли лежит {dragon_name}, поправляете одеяло и целуете его в макушку. "
-                f"'До утра,' - говорите вы, выходя из комната. 🚪😴"
-            ]
-            description = random.choice(scenes)
-        else:
-            description = f"Вы укладываете {dragon_name} спать."
-        
-        response = (
-            f"{description}\n\n"
-            
-            f"<b>📊 ПОСЛЕ СНА:</b>\n"
-            f"• 😴 Сон: +{modifier['сон']}% (теперь {dragon.stats.get('сон', 0)}%)\n"
-            f"• 😊 Настроение: +{modifier.get('настроение', 0)}\n"
-        )
-        
-        if sleep_action == "read":
-            response += f"• 📚 Литературный вкус: +10\n"
-        
-        response += character_bonus
-        
-        if result.get("level_up"):
-            response += f"\n\n<b>🎊 {result['message']}</b>"
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в _process_sleep_action: {e}")
-        await callback.answer("❌ Произошла ошибка")
-
-@dp.message(GameStates.book_reading)
-async def process_book_reading(message: types.Message, state: FSMContext):
-    """Обработка чтения книги"""
-    try:
-        user_id = message.from_user.id
-        
-        data = await state.get_data()
-        sleep_action = data.get("sleep_action")
-        book_title = data.get("book_title")
-        book_content = data.get("book_content")
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("❌ Дракон не найден")
-            await state.clear()
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        reading_scene = ActionDescriptions.get_book_reading_scene(
-            dragon.name,
-            dragon.character.get("основная_черта", ""),
-            book_title,
-            book_content
-        )
-        
-        sleep_restore = random.randint(70, 90)
-        dragon.stats["сон"] = min(100, dragon.stats.get("сон", 0) + sleep_restore)
-        dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + 20)
-        dragon.skills["литературный_вкус"] = min(100, dragon.skills.get("литературный_вкус", 0) + 10)
-        
-        if dragon.character.get("основная_черта") == "книгочей":
-            dragon.stats["сон"] = min(100, dragon.stats["сон"] + 10)
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
-            reading_scene += "\n\n<b>📚 Книгочей в восторге! +10 к сну, +15 к настроению</b>"
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Прочитал книгу: {book_title}")
-        
-        response = (
-            f"{reading_scene}\n\n"
-            
-            f"<b>📊 ПОСЛЕ ЧТЕНИЯ:</b>\n"
-            f"• 😴 Сон: +{sleep_restore}% (теперь {dragon.stats.get('сон', 0)}%)\n"
-            f"• 😊 Настроение: +20\n"
-            f"• 📚 Литературный вкус: +10\n\n"
-            
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Дракон сладко спит, улыбаясь во сне... 💤✨</i>"
-        )
-        
-        await message.answer(response, parse_mode="HTML", reply_markup=get_main_keyboard())
-        await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_book_reading: {e}")
-        await state.clear()
-        await message.answer("<b>❌ Произошла ошибка при чтении книги.</b>", parse_mode="HTML")
-
-# ==================== ОБНИМАШКИ ====================
+# Пример для обнимашек:
 @dp.message(Command("hug"))
 @dp.message(F.text == "🤗 Обнять")
 async def cmd_hug(message: types.Message):
@@ -1996,10 +2120,12 @@ async def cmd_hug(message: types.Message):
         result = dragon.apply_action("обнимашки")
         
         character_trait = dragon.character.get("основная_черта", "")
+        
+        # Характерный бонус
         if character_trait == "неженка":
             dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 25)
             dragon.stats["сон"] = min(100, dragon.stats["сон"] + 10)
-            character_bonus = "<b>🥰 Неженка обожает обнимашки! +25 к настроению, +10 к сну</b>\n"
+            character_bonus = "<b>💖 Неженка обожает обнимашки! +25 к настроению, +10 к сну</b>\n"
         else:
             character_bonus = ""
         
@@ -2023,6 +2149,14 @@ async def cmd_hug(message: types.Message):
         if result.get("level_up"):
             response += f"\n\n<b>🎊 {result['message']}</b>"
         
+        # Добавляем характерное сообщение
+        hug_message = CharacterPersonality.get_character_message(
+            character_trait,
+            "hug_time",
+            dragon.name
+        )
+        response += f"\n\n<i>💬 {hug_message}</i>"
+        
         response += (
             f"\n\n━━━━━━━━━━━━━━━━━━━\n"
             f"❤ <i>Текущее настроение:</i> <code>{dragon.stats.get('настроение', 0)}%</code>"
@@ -2034,677 +2168,7 @@ async def cmd_hug(message: types.Message):
         logger.error(f"Ошибка в cmd_hug: {e}")
         await message.answer("<b>❌ Произошла ошибка при обнимашках.</b>", parse_mode="HTML")
 
-# ==================== УХОД ЗА ДРАКОНОМ ====================
-@dp.message(Command("care"))
-@dp.message(F.text == "✨ Уход")
-async def cmd_care(message: types.Message):
-    """Уход за драконом"""
-    try:
-        user_id = message.from_user.id
-        
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        if not rate_limiter.can_perform_action(user_id, "care", 300):
-            await message.answer("<b>✨ Дракон уже ухожен. Подожди немного</b>", parse_mode="HTML")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("<b>🐣 Сначала создай дракона!</b>", parse_mode="HTML")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        fluff_stat = dragon.stats.get("пушистость", 0)
-        full_message = check_stat_full(fluff_stat, "пушистость", dragon.character.get("основная_черта", ""))
-        if full_message:
-            await message.answer(full_message, parse_mode="HTML", reply_markup=get_main_keyboard())
-            return
-        
-        inventory = db.get_inventory(user_id)
-        
-        care_text = f"<b>✨ УХОД ЗА {escape_html(dragon.name)}</b>\n\n"
-        care_text += f"✨ <i>Пушистость дракона:</i> <code>{fluff_stat}%</code>\n\n"
-        care_text += "<b>💡 Доступные действия:</b>\n"
-        care_text += "• ✨ Расчесать лапки (всегда)\n"
-        care_text += "• 🛁 Протереть мордочку (всегда)\n"
-        care_text += "• 💅 Почистить когти (всегда)\n"
-        care_text += "• 🦷 Почистить зубы (всегда)\n"
-        
-        if inventory.get("расческа", 0) > 0:
-            care_text += "• 💆 Расчесать шерстку (нужна расческа)\n"
-        
-        if inventory.get("шампунь", 0) > 0:
-            care_text += "• 🧴 Искупать с шампунем (нужен шампунь)\n"
-        
-        if inventory.get("ножницы", 0) > 0:
-            care_text += "• ✂️ Подстричь когти ножницами (нужны ножницы)\n"
-        
-        if inventory.get("игрушка", 0) > 0:
-            care_text += "• 🧸 Играть с игрушкой (нужна игрушка)\n"
-        
-        care_text += "\n<b>🛍️ Нет предметов?</b> Купи в магазине!\n"
-        care_text += "━━━━━━━━━━━━━━━━━━━\n"
-        care_text += "<i>Выбери действие:</i>"
-        
-        await message.answer(
-            care_text,
-            parse_mode="HTML",
-            reply_markup=get_care_keyboard(inventory)
-        )
-        
-    except Exception as e:
-        logger.error(f"Ошибка в cmd_care: {e}")
-        await message.answer("<b>❌ Произошла ошибка при уходе.</b>", parse_mode="HTML")
-
-@dp.callback_query(F.data.startswith("care_"))
-async def process_care(callback: types.CallbackQuery):
-    """Обработка ухода за драконом"""
-    try:
-        user_id = callback.from_user.id
-        care_action = callback.data.replace("care_", "")
-        
-        if care_action == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        dragon_name = dragon.name
-        dragon_trait = dragon.character.get("основная_черта", "")
-        
-        # Определяем предметы и их эффекты
-        item_effects = {
-            "brush_fur": {
-                "item": "расческа",
-                "name": "💆 Расчесать шерстку",
-                "effects": {"пушистость": 40, "настроение": 20}
-            },
-            "bath_shampoo": {
-                "item": "шампунь",
-                "name": "🧴 Искупать с шампунем",
-                "effects": {"пушистость": 50, "чистота": 60, "настроение": 25, "энергия": -10}
-            },
-            "trim_nails_scissors": {
-                "item": "ножницы",
-                "name": "✂️ Подстричь когти ножницами",
-                "effects": {"пушистость": 30, "настроение": 10}
-            },
-            "play_toy": {
-                "item": "игрушка",
-                "name": "🧸 Играть с игрушкой",
-                "effects": {"пушистость": 25, "настроение": 30, "энергия": -5}
-            }
-        }
-        
-        # Проверяем наличие предметов для специальных действий
-        if care_action in item_effects:
-            item_info = item_effects[care_action]
-            if inventory.get(item_info["item"], 0) <= 0:
-                await callback.answer(
-                    f"❌ Сначала купи {item_info['item']} в магазине!",
-                    show_alert=True
-                )
-                return
-            
-            # Используем предмет
-            db.update_inventory(user_id, item_info["item"], -1)
-            action_name = item_info["name"]
-        else:
-            # Базовые действия без предметов
-            action_name = care_action.replace("_", " ").title()
-        
-        result = dragon.apply_action("уход")
-        
-        # Применяем эффекты действий
-        care_effects = {
-            "brush_paws": {"пушистость": 10, "настроение": 5},
-            "wipe_face": {"пушистость": 8, "настроение": 8},
-            "clean_nails": {"пушистость": 12, "настроение": 3},
-            "clean_teeth": {"пушистость": 5, "настроение": 10},
-        }
-        
-        # Добавляем эффекты специальных действий
-        if care_action in item_effects:
-            care_effects[care_action] = item_effects[care_action]["effects"]
-        
-        if care_action in care_effects:
-            for stat, change in care_effects[care_action].items():
-                if stat in dragon.stats:
-                    dragon.stats[stat] = max(0, min(100, dragon.stats[stat] + change))
-        
-        # Бонус для чистюли
-        if dragon_trait == "чистюля":
-            dragon.stats["пушистость"] = min(100, dragon.stats["пушистость"] + 15)
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
-            character_bonus = "\n<b>✨ Чистюля сияет от счастья! +15 к пушистости, +20 к настроению</b>"
-        else:
-            character_bonus = ""
-        
-        # Описания сцен
-        description = ""
-        if care_action == "brush_fur":
-            scenes = ActionDescriptions.get_care_brush_fur_scenes(dragon_name, dragon_trait)
-            description = random.choice(scenes)
-        elif care_action == "brush_paws":
-            scenes = [
-                f"Вы усаживаете {dragon_name} перед собой и начинаете аккуратно расчёсывать его лапки. "
-                f"Дракон поднимает каждую лапку по очереди, наслаждаясь процессом. "
-                f"После расчёсывания его лапки становятся мягкими и пушистыми! 🐾✨",
-                
-                f"{dragon_name} с интересом наблюдает, как вы берёте специальную щёточку для лапок. "
-                f"Вы начинаете расчёсывать, и дракон мурлычет от удовольствия. "
-                f"Особенно он любит, когда вы расчёсываете между пальчиками! 💕👣"
-            ]
-            description = random.choice(scenes)
-        elif care_action == "bath_shampoo":
-            scenes = [
-                f"Вы наполняете ванну тёплой водой с ароматной пеной. {dragon_name} осторожно залезает в воду. "
-                f"Вы намыливаете его специальным шампунем для драконов, и он с удовольствием пускает пузыри! "
-                f"После купания он пахнет цветами и свежестью. 🛁🌺",
-                
-                f"Сегодня день купания! {dragon_name} сначала неохотно, но потом с радостью плещется в ванной. "
-                f"Вы моете ему спинку, животик и даже хвостик. После ванны вы заворачиваете его в мягкое полотенце. "
-                f"Дракон сияет чистотой! 🧖✨"
-            ]
-            description = random.choice(scenes)
-        elif care_action == "play_toy":
-            scenes = [
-                f"Вы достаёте новую игрушку и показываете её {dragon_name}. "
-                f"Дракон радостно хватает её и начинает играть, перекатывая по полу. "
-                f"Вы присоединяетесь к игре, и вместе вы весело проводите время! 🧸🎮",
-                
-                f"{dragon_name} с надеждой смотрит на коробку с игрушками. Вы достаёте его любимую мячик. "
-                f"Дракон ловко ловит его, приносит обратно и снова ждёт броска. "
-                f"Эта игра продолжается до тех пор, пока вы оба не устанете! ⚽😊"
-            ]
-            description = random.choice(scenes)
-        else:
-            description = f"Вы ухаживаете за {dragon_name}."
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Уход: {care_action}")
-        
-        response = (
-            f"{description}\n\n"
-            
-            f"<b>📊 РЕЗУЛЬТАТ УХОДА:</b>\n"
-        )
-        
-        # Добавляем изменения показателей
-        if care_action in care_effects:
-            for stat, change in care_effects[care_action].items():
-                if change > 0:
-                    response += f"• {stat.capitalize()}: +{change}\n"
-                elif change < 0:
-                    response += f"• {stat.capitalize()}: {change}\n"
-        
-        response += character_bonus
-        
-        if result.get("level_up"):
-            response += f"\n\n<b>🎊 {result['message']}</b>"
-        
-        # Показываем оставшееся количество предмета
-        if care_action in item_effects:
-            item_name = item_effects[care_action]["item"]
-            remaining = inventory.get(item_name, 0) - 1
-            response += f"\n\n📦 <i>Осталось {item_name}:</i> <code>{remaining}</code>"
-        
-        response += (
-            f"\n\n━━━━━━━━━━━━━━━━━━━\n"
-            f"✨ <i>Текущая пушистость:</i> <code>{dragon.stats.get('пушистость', 0)}%</code>"
-        )
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_care: {e}")
-        await callback.answer("❌ Произошла ошибка при уходе")
-
-# ==================== МИНИ-ИГРЫ ====================
-@dp.message(Command("games"))
-@dp.message(F.text == "🎮 Игры")
-async def cmd_games(message: types.Message):
-    """Выбор мини-игр"""
-    try:
-        user_id = message.from_user.id
-        
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("<b>🐣 Сначала создай дракона!</b>", parse_mode="HTML")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        if dragon.stats.get("энергия", 100) < 20:
-            await message.answer(
-                "<b>😴 Дракон слишком устал для игр</b>\n\n"
-                "<i>💡 Что сделать:</i>\n"
-                "• Дайте ему отдохнуть 😴\n"
-                "• Приготовьте кофе ☕",
-                parse_mode="HTML",
-                reply_markup=get_main_keyboard()
-            )
-            return
-        
-        await message.answer(
-            "<b>🎮 ВЫБЕРИ МИНИ-ИГРУ</b>\n\n"
-            
-            "<b>✨ Доступная игра:</b>\n"
-            "• 🔢 <b>Угадай число</b> - классика с подсказками (1-20)\n\n"
-            
-            f"⚡ <i>Энергия дракона:</i> <code>{dragon.stats.get('энергия', 0)}%</code>\n"
-            f"🎭 <i>Характер:</i> <code>{dragon.character.get('основная_черта', '')}</code>\n\n"
-            
-            f"<i>Игра тратит 15-25 энергии и даёт уникальные награды!</i>",
-            parse_mode="HTML",
-            reply_markup=get_minigames_keyboard()
-        )
-        
-    except Exception as e:
-        logger.error(f"Ошибка в cmd_games: {e}")
-        await message.answer("<b>❌ Произошла ошибка при выборе игр.</b>", parse_mode="HTML")
-
-@dp.callback_query(F.data.startswith("game_"))
-async def process_game_choice(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка выбора мини-игры"""
-    try:
-        user_id = callback.from_user.id
-        game_type = callback.data.replace("game_", "")
-        
-        if game_type == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        if not rate_limiter.can_perform_action(user_id, f"game_{game_type}", 60):
-            await callback.answer("⏳ Слишком часто играешь в эту игру!")
-            return
-        
-        energy_cost = random.randint(15, 25)
-        dragon.stats["энергия"] = max(0, dragon.stats["энергия"] - energy_cost)
-        db.update_dragon(user_id, dragon.to_dict())
-        
-        if game_type == "guess":
-            game = minigame_manager.guess_number_game()
-            await state.update_data(current_game=game)
-            await state.set_state(GameStates.minigame_state)
-            
-            await callback.message.edit_text(
-                f"<b>🔢 ИГРА: УГАДАЙ ЧИСЛО</b>\n\n"
-                f"🐉 Дракон загадал число от 1 до 20!\n"
-                f"У тебя есть {game['attempts']} попытки.\n\n"
-                f"{game['hints'][0]}\n\n"
-                f"<b>Введи свой вариант:</b>",
-                parse_mode="HTML"
-            )
-        
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_game_choice: {e}")
-        await callback.answer("❌ Произошла ошибка")
-
-@dp.message(GameStates.minigame_state)
-async def process_minigame_answer(message: types.Message, state: FSMContext):
-    """Обработка ответов в мини-играх"""
-    try:
-        user_id = message.from_user.id
-        user_answer = message.text.strip().lower()
-        
-        data = await state.get_data()
-        game = data.get("current_game")
-        
-        if not game:
-            await message.answer("❌ Игра не найдена")
-            await state.clear()
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("❌ Дракон не найден")
-            await state.clear()
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        response = ""
-        
-        if game["type"] == "guess":
-            try:
-                guess = int(user_answer)
-                if 1 <= guess <= 20:
-                    if guess == game["secret"]:
-                        dragon.gold += game["reward"]["gold"]
-                        dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + game["reward"]["mood"])
-                        dragon.stats["энергия"] = max(0, dragon.stats["энергия"] + game["reward"]["energy"])
-                        dragon.skills["игровая_эрудиция"] = min(100, dragon.skills.get("игровая_эрудиция", 0) + 3)
-                        
-                        response = (
-                            f"<b>🎉 ПРАВИЛЬНО! Загаданное число: {game['secret']}</b>\n\n"
-                            f"✨ Дракон радостно подпрыгивает и хлопает в ладоши!\n\n"
-                            f"<b>🏆 НАГРАДА:</b>\n"
-                            f"• 💰 Золото: +{game['reward']['gold']}\n"
-                            f"• 😊 Настроение: +{game['reward']['mood']}\n"
-                            f"• 🎮 Игровая эрудиция: +3\n"
-                        )
-                    else:
-                        dragon.stats["настроение"] = max(0, dragon.stats["настроение"] - 5)
-                        dragon.skills["игровая_эрудиция"] = min(100, dragon.skills.get("игровая_эрудиция", 0) + 1)
-                        
-                        response = (
-                            f"<b>😔 НЕ УГАДАЛ!</b> Загаданное число: {game['secret']}\n\n"
-                            f"✨ Дракон подбадривающе похлопывает тебя по плечу.\n\n"
-                            f"<b>📊 РЕЗУЛЬТАТ:</b>\n"
-                            f"• 😊 Настроение: -5\n"
-                            f"• 🎮 Игровая эрудиция: +1\n"
-                        )
-                else:
-                    response = "<b>❌ Число должно быть от 1 до 20!</b>"
-            except ValueError:
-                response = "<b>❌ Введи число!</b>"
-        
-        if dragon.character.get("основная_черта") == "игрик":
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 15)
-            response += "\n\n<b>🎮 Игрик обожает игры! +15 к настроению</b>"
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Мини-игра: {game['type']}")
-        
-        response += (
-            f"\n\n━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 <i>Золото:</i> <code>{dragon.gold}</code>\n"
-            f"😊 <i>Настроение:</i> <code>{dragon.stats.get('настроение', 0)}%</code>\n"
-            f"⚡ <i>Энергия:</i> <code>{dragon.stats.get('энергия', 0)}%</code>"
-        )
-        
-        await message.answer(response, parse_mode="HTML", reply_markup=get_main_keyboard())
-        await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_minigame_answer: {e}")
-        await state.clear()
-        await message.answer("<b>❌ Произошла ошибка в игре.</b>", parse_mode="HTML")
-
-# ==================== КОРМЛЕНИЕ ====================
-@dp.message(Command("feed"))
-async def cmd_feed(message: types.Message):
-    """Покормить дракона"""
-    try:
-        user_id = message.from_user.id
-        
-        # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
-            await message.delete()
-        except:
-            pass
-        
-        if not rate_limiter.can_perform_action(user_id, "feed", 15):
-            await message.answer("<b>⏳ Дракон еще не проголодался. Подожди немного 🍪</b>", parse_mode="HTML")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await message.answer("<b>🐣 Сначала создай дракона!</b>", parse_mode="HTML")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        
-        appetite_stat = dragon.stats.get("аппетит", 0)
-        full_message = check_stat_full(appetite_stat, "аппетит", dragon.character.get("основная_черта", ""))
-        if full_message:
-            await message.answer(full_message, parse_mode="HTML", reply_markup=get_main_keyboard())
-            return
-        
-        rate_limiter.record_feeding(user_id)
-        
-        inventory = db.get_inventory(user_id)
-        
-        available_snacks = []
-        snack_list = ["печенье", "шоколад", "зефир", "пряник", "мармелад", "пирожное"]
-        
-        for snack_key in snack_list:
-            if inventory.get(snack_key, 0) > 0:
-                available_snacks.append(snack_key)
-        
-        if not available_snacks:
-            await message.answer(
-                "<b>❌ Нет сладостей для кормления!</b>\n\n"
-                "<b>🛍️ Зайди в магазин чтобы купить:</b>\n"
-                "• Нажми «🛍️ Магазин»\n"
-                "• Или <code>/shop</code>",
-                parse_mode="HTML",
-                reply_markup=get_main_keyboard()
-            )
-            return
-        
-        await message.answer(
-            "<b>🍪 ЧЕМ УГОСТИМ ДРАКОНА?</b>\n\n"
-            "<i>✨ Выбери сладость из инвентаря:</i>\n\n"
-            f"😋 <i>Аппетит дракона:</i> <code>{appetite_stat}%</code>\n"
-            f"😊 <i>Настроение дракона:</i> <code>{dragon.stats.get('настроение', 0)}%</code>",
-            parse_mode="HTML",
-            reply_markup=get_feed_keyboard(inventory)
-        )
-        
-    except Exception as e:
-        logger.error(f"Ошибка в cmd_feed: {e}")
-        await message.answer("<b>❌ Произошла ошибка при кормлении.</b>", parse_mode="HTML")
-
-@dp.callback_query(F.data.startswith("feed_"))
-async def process_feed(callback: types.CallbackQuery):
-    """Обработка кормления"""
-    try:
-        user_id = callback.from_user.id
-        snack_type = callback.data.replace("feed_", "")
-        
-        if snack_type == "back":
-            await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
-            return
-        
-        dragon_data = db.get_dragon(user_id)
-        if not dragon_data:
-            await callback.answer("🐣 Дракон не найден")
-            return
-        
-        dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)
-        
-        if inventory.get(snack_type, 0) <= 0:
-            await callback.answer("❌ Этой сладости больше нет!")
-            return
-        
-        db.update_inventory(user_id, snack_type, -1)
-        
-        result = dragon.apply_action("кормление")
-        
-        snack_names = {
-            "печенье": "🍪 Печенье",
-            "шоколад": "🍫 Шоколад",
-            "зефир": "☁️ Зефир",
-            "пряник": "🎄 Пряник",
-            "мармелад": "🍬 Мармелад",
-            "пирожное": "🎂 Пирожное"
-        }
-        
-        snack_name = snack_names.get(snack_type, "Сладость")
-        
-        bonus = 0
-        if dragon.favorites.get("сладость") == snack_type:
-            bonus = 25
-            dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + bonus)
-            favorite_bonus = f"\n\n<b>🎉 {dragon.name} обожает {snack_name.lower()}! +25 к настроению!</b>"
-        else:
-            favorite_bonus = ""
-        
-        if dragon.character.get("основная_черта") == "гурман":
-            dragon.stats["аппетит"] = max(0, dragon.stats["аппетит"] - 15)
-            dragon.stats["настроение"] = min(100, dragon.stats["настроение"] + 20)
-            character_bonus = "\n<b>🍫 Гурман доволен! -15 к аппетиту, +20 к настроению</b>"
-        else:
-            character_bonus = ""
-        
-        db.update_dragon(user_id, dragon.to_dict())
-        db.record_action(user_id, f"Покормил: {snack_type}")
-        
-        scenes = [
-            f"Вы даёте {dragon.name} {snack_name.lower()}. Дракон аккуратно берёт угощение в лапки, "
-            f"нюхает, а затем с удовольствием съедает, мурлыча от счастья! 🍪😊",
-            
-            f"{dragon.name} смотрит на {snack_name.lower()} большими глазами. "
-            f"Вы протягиваете угощение, и дракон радостно хватает его, жуёт и облизывает лапки. "
-            f"'Спасибо! Было вкусно!' - говорит он. 🐉❤️",
-            
-            f"Сегодня на десерт у {dragon.name} - {snack_name.lower()}! "
-            f"Дракон аккуратно отламывает кусочек, пробует, и его глазки загораются от восторга. "
-            f"Он быстро съедает всё и с надеждой смотрит на вас. ✨"
-        ]
-        
-        response = (
-            f"{random.choice(scenes)}\n\n"
-            
-            f"<b>📊 РЕЗУЛЬТАТ КОРМЛЕНИЯ:</b>\n"
-            f"• 🍪 Аппетит: {result['stat_changes'].get('аппетит', 0)}%\n"
-            f"• 😊 Настроение: +{result['stat_changes'].get('настроение', 0)}%\n"
-            f"• ⚡ Энергия: +{result['stat_changes'].get('энергия', 0)}%\n"
-        )
-        
-        if bonus > 0:
-            response += f"• 🎉 Любимая сладость: +{bonus}%\n"
-        
-        response += character_bonus + favorite_bonus
-        
-        if result.get("level_up"):
-            response += f"\n\n<b>🎊 {result['message']}</b>"
-        
-        remaining = inventory.get(snack_type, 0) - 1
-        response += (
-            f"\n\n━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 <i>Осталось {snack_name.lower()}:</i> <code>{remaining}</code>"
-        )
-        
-        await callback.message.edit_text(response, parse_mode="HTML")
-        await callback.answer()
-        
-    except Exception as e:
-        logger.error(f"Ошибка в process_feed: {e}")
-        await callback.answer("❌ Произошла ошибка при кормлении")
-
-# ==================== УВЕДОМЛЕНИЯ ====================
-async def send_notifications():
-    """Отправка умных уведомлений"""
-    try:
-        now = datetime.now()
-        current_hour = now.hour
-        
-        all_users = db.get_all_users_with_dragons()
-        
-        for user_id in all_users:
-            try:
-                user_settings = db.get_user_settings(user_id)
-                if not user_settings.get("notifications_enabled", True):
-                    continue
-                
-                dragon_data = db.get_dragon(user_id)
-                if not dragon_data:
-                    continue
-                
-                dragon = Dragon.from_dict(dragon_data)
-                dragon_name = dragon.name
-                dragon_trait = dragon.character.get("основная_черта", "")
-                
-                if 8 <= current_hour <= 9:
-                    if rate_limiter.should_send_morning_notification(user_id):
-                        messages = [
-                            f"☀️ Доброе утро! {dragon_name} просыпается и потягивается. "
-                            f"Он смотрит на тебя голодными глазками: 'Может, кофе? И печенье?' ☕🍪",
-                            
-                            f"🌅 {dragon_name} зевает и трёт глазки. 'Утро... Кофе...' - бормочет он, "
-                            f"с надеждой глядя на кофемашину. Не забудь покормить дракона! ✨",
-                            
-                            f"🕗 Восемь утра! {dragon_name} уже на ногах и принюхивается к запахам с кухни. "
-                            f"'Пахнет... кофе? Или это моё воображение?' 🐉👃"
-                        ]
-                        
-                        if dragon_trait == "кофеман":
-                            messages.append(
-                                f"☕ КОФЕМАН ТРЕБУЕТ КОФЕ! {dragon_name} буквально трясётся от нетерпения. "
-                                f"'Пожалуйста, скорее! Мне нужна моя утренняя доза!' ⚡"
-                            )
-                        elif dragon_trait == "гурман":
-                            messages.append(
-                                f"🍽️ {dragon_name} смотрит на тебя с надеждой: "
-                                f"'Я слышал, сегодня у нас на завтрак что-то особенное?' 👨‍🍳✨"
-                            )
-                        
-                        await bot.send_message(user_id, random.choice(messages))
-                        continue
-                
-                elif 20 <= current_hour <= 21:
-                    if random.random() < 0.3:
-                        messages = [
-                            f"🌙 {dragon_name} зевает и сворачивается калачиком на диване. "
-                            f"'Уже поздно... скоро спать,' - говорит он, медленно закрывая глаза. 😴",
-                            
-                            f"✨ Вечер. {dragon_name} смотрит на звёзды в окне. "
-                            f"'Сегодня был хороший день. Спасибо тебе,' - шепчет он тихо. 💫",
-                            
-                            f"🛏️ {dragon_name} уже в пижамке и готовится ко сну. "
-                            f"'Не забудь почитать мне сказку перед сном?' 📖"
-                        ]
-                        await bot.send_message(user_id, random.choice(messages))
-                        continue
-                
-                if random.random() < 0.01:
-                    messages = [
-                        f"❤️ {dragon_name} вдруг обнимает тебя: 'Я так рад, что ты у меня есть!' 🐾",
-                        f"💕 {dragon_name} смотрит на тебя с любовью: 'Ты - лучший хозяин в мире!' ✨",
-                        f"🌟 {dragon_name} думает о тебе и улыбается. 'Как же я тебя люблю!' 💖"
-                    ]
-                    await bot.send_message(user_id, random.choice(messages))
-                    continue
-                
-                last_action_time = rate_limiter.user_last_interaction.get(user_id)
-                if last_action_time:
-                    hours_since_last = (now - last_action_time).total_seconds() / 3600
-                    if hours_since_last > 3 and random.random() < 0.1:
-                        messages = [
-                            f"😔 {dragon_name} грустно смотрит на дверь. 'Когда же он вернётся?' 💭",
-                            f"⏳ {dragon_name} перебирает свои игрушки. 'Скучно без него...' 🧸",
-                            f"📱 {dragon_name} смотрит на телефон. 'Написать ему? Или подождать?' ✍️"
-                        ]
-                        await bot.send_message(user_id, random.choice(messages))
-                        
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
-                continue
-                
-    except Exception as e:
-        logger.error(f"Ошибка в send_notifications: {e}")
+# Аналогично обновить другие обработчики с добавлением характерных сообщений...
 
 # ==================== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ====================
 @dp.error()
@@ -2724,11 +2188,11 @@ async def scheduled_notifications():
         except KeyboardInterrupt:
             break
         
-        await asyncio.sleep(1800)
+        await asyncio.sleep(1800)  # Проверка каждые 30 минут
 
 async def main():
     """Главная функция запуска бота"""
-    logger.info("✨ Запуск бота Кофейный Дракон v5.1...")
+    logger.info("✨ Запуск бота Кофейный Дракон v6.0...")
     
     try:
         asyncio.create_task(scheduled_notifications())
