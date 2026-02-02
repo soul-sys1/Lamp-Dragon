@@ -12,7 +12,7 @@ class DragonDatabase:
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Для доступа по имени колонок
         self.cursor = self.conn.cursor()
-        # Убрана автоматическая инициализация таблиц
+        self.create_tables()  # Создаем таблицы сразу при инициализации
     
     def create_tables(self):
         """Создаем таблицы, если их нет"""
@@ -114,6 +114,7 @@ class DragonDatabase:
         ''')
         
         self.conn.commit()
+        print("✅ Таблицы базы данных созданы/проверены")
     
     def user_exists(self, user_id: int) -> bool:
         """Проверяет, есть ли пользователь в базе"""
@@ -127,8 +128,8 @@ class DragonDatabase:
     
     def create_user(self, user_id: int, username: str) -> bool:
         """Создает нового пользователя"""
-        if not self.user_exists(user_id):
-            try:
+        try:
+            if not self.user_exists(user_id):
                 self.cursor.execute(
                     "INSERT INTO users (user_id, username) VALUES (?, ?)",
                     (user_id, username)
@@ -147,16 +148,18 @@ class DragonDatabase:
                 )
                 
                 self.conn.commit()
+                print(f"✅ Создан пользователь: {username} (ID: {user_id})")
                 return True
-            except Exception as e:
-                print(f"Ошибка при создании пользователя: {e}")
-                return False
-        return True
+            return True  # Пользователь уже существует
+        except Exception as e:
+            print(f"❌ Ошибка при создании пользователя: {e}")
+            self.conn.rollback()
+            return False
     
     def create_dragon(self, user_id: int, dragon_data: Dict) -> bool:
         """Создает нового дракона"""
-        if not self.dragon_exists(user_id):
-            try:
+        try:
+            if not self.dragon_exists(user_id):
                 self.cursor.execute('''
                     INSERT INTO dragons 
                     (user_id, name, character_trait, level, experience, gold, dragon_data)
@@ -190,14 +193,16 @@ class DragonDatabase:
                             DO UPDATE SET quantity = quantity + excluded.quantity
                         ''', item)
                     except Exception as e:
-                        print(f"Ошибка добавления предмета {item[1]}: {e}")
+                        print(f"❌ Ошибка добавления предмета {item[1]}: {e}")
                 
                 self.conn.commit()
+                print(f"✅ Создан дракон: {dragon_data.get('name', 'Дракоша')} для пользователя {user_id}")
                 return True
-            except Exception as e:
-                print(f"Ошибка при создании дракона: {e}")
-                return False
-        return False
+            return False  # Дракон уже существует
+        except Exception as e:
+            print(f"❌ Ошибка при создании дракона: {e}")
+            self.conn.rollback()
+            return False
     
     def get_dragon(self, user_id: int) -> Optional[Dict]:
         """Получает данные дракона"""
@@ -210,7 +215,7 @@ class DragonDatabase:
             try:
                 return json.loads(result[0])
             except json.JSONDecodeError as e:
-                print(f"Ошибка декодирования JSON для пользователя {user_id}: {e}")
+                print(f"❌ Ошибка декодирования JSON для пользователя {user_id}: {e}")
                 return None
         return None
     
@@ -239,7 +244,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка обновления дракона: {e}")
+            print(f"❌ Ошибка обновления дракона: {e}")
+            self.conn.rollback()
             return False
     
     def get_inventory(self, user_id: int) -> Dict[str, int]:
@@ -287,7 +293,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка обновления инвентаря: {e}")
+            print(f"❌ Ошибка обновления инвентаря: {e}")
+            self.conn.rollback()
             return False
     
     def add_gold(self, user_id: int, amount: int) -> bool:
@@ -300,7 +307,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка добавления золота: {e}")
+            print(f"❌ Ошибка добавления золота: {e}")
+            self.conn.rollback()
             return False
     
     def get_gold(self, user_id: int) -> int:
@@ -340,7 +348,8 @@ class DragonDatabase:
             self.conn.commit()
             return None
         except Exception as e:
-            print(f"Ошибка добавления опыта: {e}")
+            print(f"❌ Ошибка добавления опыта: {e}")
+            self.conn.rollback()
             return None
     
     def update_habit(self, user_id: int, habit_type: str, habit_time: str = None) -> int:
@@ -381,7 +390,8 @@ class DragonDatabase:
             self.conn.commit()
             return streak
         except Exception as e:
-            print(f"Ошибка обновления привычки: {e}")
+            print(f"❌ Ошибка обновления привычки: {e}")
+            self.conn.rollback()
             return 0
     
     def get_habits(self, user_id: int) -> List[Dict]:
@@ -401,10 +411,10 @@ class DragonDatabase:
             for row in rows
         ]
     
-    # ==== НОВЫЕ ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С BOT.PY ====
+    # ==== ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С BOT.PY ====
     
     def record_action(self, user_id: int, action: str) -> bool:
-        """Записывает действие пользователя (для совместимости с bot.py)"""
+        """Записывает действие пользователя"""
         try:
             self.cursor.execute('''
                 INSERT INTO user_actions (user_id, action_type, action_details)
@@ -443,7 +453,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка записи действия: {e}")
+            print(f"❌ Ошибка записи действия: {e}")
+            self.conn.rollback()
             return False
     
     def get_user_settings(self, user_id: int) -> Dict:
@@ -465,11 +476,11 @@ class DragonDatabase:
             result = self.cursor.fetchone()
             return dict(result) if result else {}
         except Exception as e:
-            print(f"Ошибка получения настроек: {e}")
+            print(f"❌ Ошибка получения настроек: {e}")
             return {}
     
     def update_user_setting(self, user_id: int, key: str, value: Any) -> bool:
-        """Обновляет одну настройку пользователя (для совместимости с bot.py)"""
+        """Обновляет одну настройку пользователя"""
         try:
             # Проверяем существование настроек
             self.cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (user_id,))
@@ -487,7 +498,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка обновления настройки: {e}")
+            print(f"❌ Ошибка обновления настройки {key}: {e}")
+            self.conn.rollback()
             return False
     
     def update_user_settings(self, user_id: int, settings: Dict) -> bool:
@@ -521,7 +533,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка обновления настроек: {e}")
+            print(f"❌ Ошибка обновления настроек: {e}")
+            self.conn.rollback()
             return False
     
     def get_user_stats(self, user_id: int) -> Dict:
@@ -546,7 +559,7 @@ class DragonDatabase:
             result = self.cursor.fetchone()
             return dict(result) if result else {}
         except Exception as e:
-            print(f"Ошибка получения статистики: {e}")
+            print(f"❌ Ошибка получения статистики: {e}")
             return {}
     
     def update_user_stats(self, user_id: int, stats: Dict) -> bool:
@@ -584,7 +597,8 @@ class DragonDatabase:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Ошибка обновления статистики: {e}")
+            print(f"❌ Ошибка обновления статистики: {e}")
+            self.conn.rollback()
             return False
     
     def add_achievement(self, user_id: int, achievement: Dict) -> bool:
@@ -604,7 +618,7 @@ class DragonDatabase:
             
             return self.update_user_stats(user_id, stats)
         except Exception as e:
-            print(f"Ошибка добавления достижения: {e}")
+            print(f"❌ Ошибка добавления достижения: {e}")
             return False
     
     def get_all_users_with_dragons(self) -> List[int]:
@@ -615,7 +629,7 @@ class DragonDatabase:
             )
             return [row[0] for row in self.cursor.fetchall()]
         except Exception as e:
-            print(f"Ошибка получения пользователей с драконами: {e}")
+            print(f"❌ Ошибка получения пользователей с драконами: {e}")
             return []
     
     def get_active_users(self, hours: int = 24) -> List[int]:
@@ -628,7 +642,7 @@ class DragonDatabase:
             )
             return [row[0] for row in self.cursor.fetchall()]
         except Exception as e:
-            print(f"Ошибка получения активных пользователей: {e}")
+            print(f"❌ Ошибка получения активных пользователей: {e}")
             return []
     
     def get_feeding_history(self, user_id: int, days: int = 7) -> List[datetime]:
@@ -645,7 +659,7 @@ class DragonDatabase:
             
             return [datetime.fromisoformat(row[0]) for row in self.cursor.fetchall()]
         except Exception as e:
-            print(f"Ошибка получения истории кормлений: {e}")
+            print(f"❌ Ошибка получения истории кормлений: {e}")
             return []
     
     def get_dragon_count(self) -> int:
@@ -687,7 +701,7 @@ class DragonDatabase:
             self.conn.commit()
             return deleted
         except Exception as e:
-            print(f"Ошибка очистки данных: {e}")
+            print(f"❌ Ошибка очистки данных: {e}")
             return 0
     
     def get_user_timezone(self, user_id: int) -> str:
@@ -726,9 +740,11 @@ class DragonDatabase:
             )
             
             self.conn.commit()
+            print(f"✅ Данные пользователя {user_id} сброшены")
             return True
         except Exception as e:
-            print(f"Ошибка сброса данных: {e}")
+            print(f"❌ Ошибка сброса данных: {e}")
+            self.conn.rollback()
             return False
     
     def backup_dragon_data(self, user_id: int) -> Optional[Dict]:
@@ -750,10 +766,10 @@ class DragonDatabase:
                 'backup_date': datetime.now().isoformat()
             }
         except Exception as e:
-            print(f"Ошибка создания бэкапа: {e}")
+            print(f"❌ Ошибка создания бэкапа: {e}")
             return None
     
-    # ==== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПРОСТОТЫ ====
+    # ==== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ====
     
     def get_last_action_time(self, user_id: int, action_type: str = None) -> Optional[datetime]:
         """Получает время последнего действия"""
@@ -776,7 +792,7 @@ class DragonDatabase:
                 return datetime.fromisoformat(result[0])
             return None
         except Exception as e:
-            print(f"Ошибка получения времени действия: {e}")
+            print(f"❌ Ошибка получения времени действия: {e}")
             return None
     
     def get_last_action(self, user_id: int) -> Optional[str]:
@@ -791,7 +807,7 @@ class DragonDatabase:
             result = self.cursor.fetchone()
             return result[0] if result else None
         except Exception as e:
-            print(f"Ошибка получения последнего действия: {e}")
+            print(f"❌ Ошибка получения последнего действия: {e}")
             return None
     
     def get_action_history(self, user_id: int, limit: int = 20) -> List[Dict]:
@@ -815,7 +831,7 @@ class DragonDatabase:
                 for row in rows
             ]
         except Exception as e:
-            print(f"Ошибка получения истории действий: {e}")
+            print(f"❌ Ошибка получения истории действий: {e}")
             return []
     
     def close(self):
@@ -824,13 +840,13 @@ class DragonDatabase:
             # Очищаем старые данные перед закрытием
             self.cleanup_old_data(30)
             self.conn.close()
+            print("✅ Соединение с базой данных закрыто")
         except Exception as e:
-            print(f"Ошибка закрытия базы: {e}")
+            print(f"❌ Ошибка закрытия базы: {e}")
 
 
-# ===== ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА =====
-# Убираем автоматическое создание экземпляра при импорте
-# Вместо этого используем паттерн Singleton с ленивой инициализацией
+# ===== СОЗДАНИЕ ГЛОБАЛЬНОГО ЭКЗЕМПЛЯРА =====
+# Теперь db - это экземпляр класса DragonDatabase, а не функция
 
 _db_instance = None
 
@@ -839,14 +855,16 @@ def get_db(db_name="dragons.db"):
     global _db_instance
     if _db_instance is None:
         _db_instance = DragonDatabase(db_name)
-        # Таблицы создаются только при первом реальном использовании
-        _db_instance.create_tables()
-        print(f"База данных инициализирована. Драконов в базе: {_db_instance.get_dragon_count()}")
+        print(f"✅ База данных инициализирована. Драконов в базе: {_db_instance.get_dragon_count()}")
     return _db_instance
 
 def init_database(db_name="dragons.db"):
     """Явная инициализация базы данных"""
     return get_db(db_name)
 
-# Для обратной совместимости можно оставить db как функцию
-db = get_db  # Теперь db - это функция, а не экземпляр
+
+# СОЗДАЕМ ЭКЗЕМПЛЯР СРАЗУ ПРИ ИМПОРТЕ
+# Теперь при импорте "from database import db" мы получим экземпляр класса
+db = get_db()  # Это ЭКЗЕМПЛЯР, а не функция!
+
+print(f"🐉 Модуль базы данных загружен. Текущее количество драконов: {db.get_dragon_count()}")
