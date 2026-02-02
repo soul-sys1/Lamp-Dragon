@@ -752,18 +752,18 @@ def get_care_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     
     # Действия с предметами из магазина
     row3 = []
-    if inventory.get("расческа", 0) > 0:
+    if inventory.get("драконья_расческа", 0) > 0 or inventory.get("расческа", 0) > 0:
         row3.append(InlineKeyboardButton(text="💆 Расчесать шерстку", callback_data="care_brush_fur"))
-    if inventory.get("шампунь", 0) > 0:
+    if inventory.get("волшебный_шампунь", 0) > 0 or inventory.get("шампунь", 0) > 0:
         row3.append(InlineKeyboardButton(text="🧴 Искупать с шампунем", callback_data="care_bath_shampoo"))
     
     if row3:
         keyboard.inline_keyboard.append(row3)
     
     row4 = []
-    if inventory.get("ножницы", 0) > 0:
+    if inventory.get("золотые_ножницы", 0) > 0 or inventory.get("ножницы", 0) > 0:
         row4.append(InlineKeyboardButton(text="✂️ Подстричь когти ножницами", callback_data="care_trim_nails_scissors"))
-    if inventory.get("игрушка", 0) > 0:
+    if inventory.get("плюшевый_дракончик", 0) > 0 or inventory.get("игрушка", 0) > 0:
         row4.append(InlineKeyboardButton(text="🧸 Играть с игрушкой", callback_data="care_play_toy"))
     
     if row4:
@@ -1542,7 +1542,9 @@ async def cmd_coffee(message: types.Message, state: FSMContext):
         
         inventory = db.get_inventory(user_id)
         
-        if inventory.get("кофейные_зерна", 0) <= 0:
+        # Исправленная проверка кофейных зёрен
+        coffee_beans = inventory.get("кофейные_зерна", 0) or inventory.get("кофейные зёрна", 0)
+        if coffee_beans <= 0:
             await message.answer(
                 "<b>❌ Нет кофейных зёрен!</b>\n\n"
                 "<b>🛍️ Купи в магазине:</b>\n"
@@ -1574,7 +1576,7 @@ async def cmd_coffee(message: types.Message, state: FSMContext):
             f"• ☕ <b>Американо</b> - эспрессо с водой\n"
             f"• ☕ <b>Мокко</b> - с шоколадом и молоком\n\n"
             
-            f"<b>📦 Кофейные зёрна:</b> <code>{inventory.get('кофейные_зерна', 0)}</code>\n"
+            f"<b>📦 Кофейные зёрна:</b> <code>{coffee_beans}</code>\n"
             f"<b>🎭 Характер:</b> <code>{character_trait}</code>\n\n"
             
             f"<i>Любимый кофе дракона: {dragon.favorites.get('кофе', 'латте')}</i>",
@@ -1617,11 +1619,16 @@ async def process_coffee_choice(callback: types.CallbackQuery, state: FSMContext
         
         # Используем кофейные зерна
         inventory = db.get_inventory(user_id)
-        if inventory.get("кофейные_зерна", 0) <= 0:
+        coffee_beans = inventory.get("кофейные_зерна", 0) or inventory.get("кофейные зёрна", 0)
+        if coffee_beans <= 0:
             await callback.answer("❌ Нет кофейных зёрен!")
             return
         
-        db.update_inventory(user_id, "кофейные_зерна", -1)
+        # Уменьшаем количество кофейных зёрен
+        if inventory.get("кофейные_зерна", 0) > 0:
+            db.update_inventory(user_id, "кофейные_зерна", -1)
+        elif inventory.get("кофейные зёрна", 0) > 0:
+            db.update_inventory(user_id, "кофейные зёрна", -1)
         
         await state.update_data(coffee_type=action)
         
@@ -1679,6 +1686,7 @@ async def process_coffee_additions(callback: types.CallbackQuery, state: FSMCont
             if dragon_data:
                 dragon = Dragon.from_dict(dragon_data)
                 inventory = db.get_inventory(user_id)
+                coffee_beans = inventory.get("кофейные_зерна", 0) or inventory.get("кофейные зёрна", 0)
                 
                 await callback.message.edit_text(
                     f"<b>☕ ПРИГОТОВЬ КОФЕ ДЛЯ {escape_html(dragon.name)}</b>\n\n"
@@ -1691,7 +1699,7 @@ async def process_coffee_additions(callback: types.CallbackQuery, state: FSMCont
                     f"• ☕ <b>Раф</b> - с ванильным сахаром и сливками\n"
                     f"• ☕ <b>Американо</b> - эспрессо с водой\n"
                     f"• ☕ <b>Мокко</b> - с шоколадом и молоком\n\n"
-                    f"<b>📦 Кофейные зёрна:</b> <code>{inventory.get('кофейные_зерна', 0)}</code>",
+                    f"<b>📦 Кофейные зёрна:</b> <code>{coffee_beans}</code>",
                     parse_mode="HTML",
                     reply_markup=get_coffee_keyboard()
                 )
@@ -2111,7 +2119,7 @@ async def process_sleep_choice(callback: types.CallbackQuery, state: FSMContext)
             # Дать игрушку
             result = dragon.apply_action("сон")
             inventory = db.get_inventory(user_id)
-            if inventory.get("игрушка", 0) > 0:
+            if inventory.get("игрушка", 0) > 0 or inventory.get("плюшевый_дракончик", 0) > 0:
                 bonus_text = "<b>🧸 С игрушкой: +20 ко сну</b>\n"
                 dragon.stats["сон"] = min(100, dragon.stats.get("сон", 0) + 20)
                 scene = f"Вы даёте {dragon.name} его любимую игрушку. Дракон счастливо обнимает её, укладывается поудобнее и быстро засыпает, улыбаясь во сне. 🧸💤"
@@ -2302,21 +2310,21 @@ async def cmd_care(message: types.Message, state: FSMContext):
         )
         
         # Добавляем дополнительные опции если есть предметы
-        if inventory.get("расческа", 0) > 0:
+        if inventory.get("драконья_расческа", 0) > 0 or inventory.get("расческа", 0) > 0:
             await message.answer("• 💆 <b>Расчесать шерстку</b> - с расчёской (лучший эффект)</b>")
-        if inventory.get("шампунь", 0) > 0:
+        if inventory.get("волшебный_шампунь", 0) > 0 or inventory.get("шампунь", 0) > 0:
             await message.answer("• 🧴 <b>Искупать с шампунем</b> - полноценная ванна</b>")
-        if inventory.get("ножницы", 0) > 0:
+        if inventory.get("золотые_ножницы", 0) > 0 or inventory.get("ножницы", 0) > 0:
             await message.answer("• ✂️ <b>Подстричь когти ножницами</b> - профессиональный уход</b>")
-        if inventory.get("игрушка", 0) > 0:
+        if inventory.get("плюшевый_дракончик", 0) > 0 or inventory.get("игрушка", 0) > 0:
             await message.answer("• 🧸 <b>Играть с игрушкой</b> - развлечение и уход</b>")
         
         await message.answer(
             f"\n<b>📦 Доступные предметы:</b>\n"
-            f"• 💆 Расчёска: {inventory.get('расческа', 0)} шт.\n"
-            f"• 🧴 Шампунь: {inventory.get('шампунь', 0)} шт.\n"
-            f"• ✂️ Ножницы: {inventory.get('ножницы', 0)} шт.\n"
-            f"• 🧸 Игрушка: {inventory.get('игрушка', 0)} шт.\n\n"
+            f"• 💆 Расчёска: {inventory.get('драконья_расческа', 0) + inventory.get('расческа', 0)} шт.\n"
+            f"• 🧴 Шампунь: {inventory.get('волшебный_шампунь', 0) + inventory.get('шампунь', 0)} шт.\n"
+            f"• ✂️ Ножницы: {inventory.get('золотые_ножницы', 0) + inventory.get('ножницы', 0)} шт.\n"
+            f"• 🧸 Игрушка: {inventory.get('плюшевый_дракончик', 0) + inventory.get('игрушка', 0)} шт.\n\n"
             f"<i>💡 Чистюля особенно оценит качественный уход!</i>",
             parse_mode="HTML",
             reply_markup=get_care_keyboard(inventory)
@@ -2385,8 +2393,14 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
             
         elif action == "brush_fur":
             inventory = db.get_inventory(user_id)
-            if inventory.get("расческа", 0) > 0:
-                db.update_inventory(user_id, "расческа", -1)
+            has_brush = inventory.get("драконья_расческа", 0) > 0 or inventory.get("расческа", 0) > 0
+            if has_brush:
+                # Используем расчёску
+                if inventory.get("драконья_расческа", 0) > 0:
+                    db.update_inventory(user_id, "драконья_расческа", -1)
+                elif inventory.get("расческа", 0) > 0:
+                    db.update_inventory(user_id, "расческа", -1)
+                    
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 30)
                 bonus = 30
@@ -2398,8 +2412,14 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "bath_shampoo":
             inventory = db.get_inventory(user_id)
-            if inventory.get("шампунь", 0) > 0:
-                db.update_inventory(user_id, "шампунь", -1)
+            has_shampoo = inventory.get("волшебный_шампунь", 0) > 0 or inventory.get("шампунь", 0) > 0
+            if has_shampoo:
+                # Используем шампунь
+                if inventory.get("волшебный_шампунь", 0) > 0:
+                    db.update_inventory(user_id, "волшебный_шампунь", -1)
+                elif inventory.get("шампунь", 0) > 0:
+                    db.update_inventory(user_id, "шампунь", -1)
+                    
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 40)
                 dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + 15)
@@ -2411,8 +2431,14 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "trim_nails_scissors":
             inventory = db.get_inventory(user_id)
-            if inventory.get("ножницы", 0) > 0:
-                db.update_inventory(user_id, "ножницы", -1)
+            has_scissors = inventory.get("золотые_ножницы", 0) > 0 or inventory.get("ножницы", 0) > 0
+            if has_scissors:
+                # Используем ножницы
+                if inventory.get("золотые_ножницы", 0) > 0:
+                    db.update_inventory(user_id, "золотые_ножницы", -1)
+                elif inventory.get("ножницы", 0) > 0:
+                    db.update_inventory(user_id, "ножницы", -1)
+                    
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 25)
                 bonus = 25
@@ -2423,8 +2449,14 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
                 
         elif action == "play_toy":
             inventory = db.get_inventory(user_id)
-            if inventory.get("игрушка", 0) > 0:
-                db.update_inventory(user_id, "игрушка", -1)
+            has_toy = inventory.get("плюшевый_дракончик", 0) > 0 or inventory.get("игрушка", 0) > 0
+            if has_toy:
+                # Используем игрушку
+                if inventory.get("плюшевый_дракончик", 0) > 0:
+                    db.update_inventory(user_id, "плюшевый_дракончик", -1)
+                elif inventory.get("игрушка", 0) > 0:
+                    db.update_inventory(user_id, "игрушка", -1)
+                    
                 result = dragon.apply_action("уход")
                 dragon.stats["пушистость"] = min(100, dragon.stats.get("пушистость", 0) + 20)
                 dragon.stats["настроение"] = min(100, dragon.stats.get("настроение", 0) + 25)
