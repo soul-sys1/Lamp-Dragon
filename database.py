@@ -1,7 +1,7 @@
 """
-БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v6.0
+БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v6.0 - ИСПРАВЛЕННАЯ ВЕРСИЯ
 Хранит всех драконов в SQLite базе с обновленными функциями
-Поддержка часовых поясов и улучшенная система инвентаря
+Версия с английскими названиями предметов и упрощенным инвентарем
 """
 import sqlite3
 import json
@@ -48,7 +48,7 @@ class DragonDatabase:
             )
         ''')
         
-        # Таблица инвентаря (улучшенная структура)
+        # Таблица инвентаря (упрощенная структура)
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,7 +212,7 @@ class DragonDatabase:
             return False
     
     def create_dragon(self, user_id: int, dragon_data: Dict) -> bool:
-        """Создает нового дракона"""
+        """Создает нового дракона - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         try:
             if not self.dragon_exists(user_id):
                 # Сначала убедимся, что пользователь существует
@@ -235,13 +235,20 @@ class DragonDatabase:
                     json.dumps(dragon_data, ensure_ascii=False)
                 ))
                 
-                # Создаем начальный инвентарь с категориями
+                # СОЗДАЕМ НАЧАЛЬНЫЙ ИНВЕНТАРЬ С АНГЛИЙСКИМИ НАЗВАНИЯМИ
                 initial_items = [
-                    (user_id, 'кофейные_зерна', 10, 'кофе', 'common', 0),
-                    (user_id, 'печенье', 5, 'сладости', 'common', 0),
-                    (user_id, 'шоколад', 2, 'сладости', 'uncommon', 0),
-                    (user_id, 'зефир', 1, 'сладости', 'rare', 0),
-                    (user_id, 'пряник', 1, 'сладости', 'common', 0)
+                    # Кофе и ингредиенты
+                    (user_id, 'coffee_beans', 10, 'coffee', 'common', 0),
+                    
+                    # Сладости
+                    (user_id, 'cookie', 5, 'sweets', 'common', 0),
+                    (user_id, 'chocolate', 2, 'sweets', 'uncommon', 0),
+                    (user_id, 'marshmallow', 1, 'sweets', 'rare', 0),
+                    (user_id, 'gingerbread', 1, 'sweets', 'common', 0),
+                    
+                    # Предметы для ухода (по умолчанию нет)
+                    # Ингредиенты для кофе (по умолчанию нет)
+                    # Прочие предметы (по умолчанию нет)
                 ]
                 
                 for item in initial_items:
@@ -332,50 +339,54 @@ class DragonDatabase:
             self.conn.rollback()
             return False
     
-    def get_inventory(self, user_id: int, category: str = None) -> Dict[str, int]:
-        """Получает инвентарь пользователя, с фильтром по категории"""
+    def get_inventory(self, user_id: int) -> Dict[str, int]:
+        """Получает инвентарь пользователя - ВСЕГДА возвращает {item_name: quantity}"""
         try:
-            if category:
-                self.cursor.execute('''
-                    SELECT item_name, quantity, category, rarity 
-                    FROM inventory 
-                    WHERE user_id = ? AND category = ?
-                    ORDER BY category, item_name
-                ''', (user_id, category))
-            else:
-                self.cursor.execute('''
-                    SELECT item_name, quantity, category, rarity 
-                    FROM inventory 
-                    WHERE user_id = ?
-                    ORDER BY category, item_name
-                ''', (user_id,))
+            self.cursor.execute('''
+                SELECT item_name, quantity 
+                FROM inventory 
+                WHERE user_id = ? AND quantity > 0
+                ORDER BY item_name
+            ''', (user_id,))
             
             result = self.cursor.fetchall()
-            
-            if category:
-                return {row[0]: row[1] for row in result} if result else {}
-            else:
-                # Возвращаем структурированный инвентарь
-                inventory = {}
-                for row in result:
-                    item_name, quantity, item_category, rarity = row
-                    if item_category not in inventory:
-                        inventory[item_category] = {}
-                    inventory[item_category][item_name] = {
-                        'quantity': quantity,
-                        'rarity': rarity
-                    }
-                return inventory
+            return {row[0]: row[1] for row in result} if result else {}
                 
         except Exception as e:
             print(f"❌ Ошибка получения инвентаря: {e}")
+            return {}
+    
+    def get_inventory_with_details(self, user_id: int) -> Dict[str, Dict]:
+        """Получает инвентарь с деталями (категория, редкость)"""
+        try:
+            self.cursor.execute('''
+                SELECT item_name, quantity, category, rarity
+                FROM inventory 
+                WHERE user_id = ? AND quantity > 0
+                ORDER BY category, item_name
+            ''', (user_id,))
+            
+            result = self.cursor.fetchall()
+            inventory = {}
+            
+            for row in result:
+                item_name, quantity, category, rarity = row
+                inventory[item_name] = {
+                    'quantity': quantity,
+                    'category': category,
+                    'rarity': rarity
+                }
+            
+            return inventory
+        except Exception as e:
+            print(f"❌ Ошибка получения инвентаря с деталями: {e}")
             return {}
     
     def get_inventory_by_category(self, user_id: int) -> Dict[str, Dict[str, int]]:
         """Получает инвентарь сгруппированный по категориям"""
         try:
             self.cursor.execute('''
-                SELECT category, item_name, quantity, rarity
+                SELECT category, item_name, quantity
                 FROM inventory 
                 WHERE user_id = ? AND quantity > 0
                 ORDER BY category, item_name
@@ -385,13 +396,10 @@ class DragonDatabase:
             inventory_by_category = {}
             
             for row in result:
-                category, item_name, quantity, rarity = row
+                category, item_name, quantity = row
                 if category not in inventory_by_category:
                     inventory_by_category[category] = {}
-                inventory_by_category[category][item_name] = {
-                    'quantity': quantity,
-                    'rarity': rarity
-                }
+                inventory_by_category[category][item_name] = quantity
             
             return inventory_by_category
         except Exception as e:
@@ -424,7 +432,8 @@ class DragonDatabase:
                     update_category = category if category else current_category
                     self.cursor.execute('''
                         UPDATE inventory 
-                        SET quantity = ?, category = COALESCE(?, category)
+                        SET quantity = ?, category = COALESCE(?, category),
+                            last_used = CURRENT_TIMESTAMP
                         WHERE user_id = ? AND item_name = ?
                     ''', (new_quantity, update_category, user_id, item_name))
             else:
@@ -1573,4 +1582,4 @@ def init_database(db_name="dragons.db"):
 # СОЗДАЕМ ЭКЗЕМПЛЯР СРАЗУ ПРИ ИМПОРТЕ
 db = get_db()  # Это ЭКЗЕМПЛЯР, а не функция!
 
-print(f"🐉 Модуль базы данных v6.0 загружен.")
+print(f"🐉 Модуль базы данных v6.0 (исправленный) загружен.")
