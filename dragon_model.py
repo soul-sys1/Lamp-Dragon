@@ -35,7 +35,7 @@ class Dragon:
             "литературный_вкус": 5,         # Любовь и понимание книг
             "игровая_эрудиция": 5,          # Навык в играх
             "вязальная_сноровка": 0,        # Навык рукоделия (для будущих обновлений)
-            "кулинарное_искусство": 0,      # Навык приготовления еды
+            "кулинарное_искусство": 0,      # Навык приготовления еда
             "музыкальный_слух": 0,          # Чувство ритма и музыки
             "артистизм": 0,                  # Творческие способности
             "атлетичность": 0,              # Физическая форма
@@ -223,7 +223,7 @@ class Dragon:
             
             growth_rates = {
                 "сон": 2.5,          # 2.5% в час
-                "аппетит": 2,        # 2% в час
+                "аппетит": 2,        # 2% в час,
             }
             
             # ПРИМЕНЯЕМ ИЗМЕНЕНИЯ
@@ -383,6 +383,7 @@ class Dragon:
         
         self.achievements.extend(achievements_to_add)
     
+    # ==== ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ СОВМЕСТИМОСТИ ====
     def apply_action(self, action_type: str, action_data: Dict = None) -> Dict:
         """Применяет действие к дракону и возвращает результат"""
         if action_data is None:
@@ -399,7 +400,7 @@ class Dragon:
         }
         
         try:
-            # ОСНОВНЫЕ ЭФФЕКТЫ ДЕЙСТВИЙ
+            # ОСНОВНЫЕ ЭФФЕКТЫ ДЕЙСТВИЙ (обновленные для совместимости)
             base_effects = {
                 "кофе": {
                     "кофе": 40,
@@ -455,6 +456,13 @@ class Dragon:
                     "кофе": 30,
                     "настроение": 40,
                     "энергия": 20
+                },
+                # ==== ДОПОЛНИТЕЛЬНЫЕ ДЕЙСТВИЯ ДЛЯ BOT.PY ====
+                "уход": {  # Для общего ухода
+                    "пушистость": 25,
+                    "чистота": 30,
+                    "настроение": 15,
+                    "здоровье": 3
                 }
             }
             
@@ -469,7 +477,8 @@ class Dragon:
                 "кофе_арт": ["кофейное_мастерство", "артистизм"],
                 "уход_базовый": ["артистизм"],
                 "уход_расческа": ["артистизм"],
-                "уход_шампунь": ["артистизм", "интеллект"]
+                "уход_шампунь": ["артистизм", "интеллект"],
+                "уход": ["артистизм"]
             }
             
             # ПРИМЕНЯЕМ БАЗОВЫЕ ЭФФЕКТЫ
@@ -529,21 +538,23 @@ class Dragon:
                     "энерджайзер": {"action": "игра", "bonus": {"энергия": -10, "атлетичность": 5}}
                 }
                 
-                if main_trait in character_bonuses and character_bonuses[main_trait]["action"] in action_type:
-                    bonus_info = character_bonuses[main_trait]["bonus"]
-                    for stat, bonus in bonus_info.items():
-                        if stat in self.stats:
-                            self.stats[stat] = min(100, max(0, self.stats[stat] + bonus))
-                            result["stat_changes"][stat] = result["stat_changes"].get(stat, 0) + bonus
-                        elif stat in self.skills:
-                            self.skills[stat] = min(100, self.skills[stat] + bonus)
-                            result["skill_changes"][stat] = result["skill_changes"].get(stat, 0) + bonus
-                    
-                    trait_name = main_trait.capitalize()
-                    if result["message"]:
-                        result["message"] += f"\n✨ {trait_name} получает дополнительный бонус!"
-                    else:
-                        result["message"] = f"✨ {trait_name} получает дополнительный бонус!"
+                # Проверяем бонусы для характера
+                for trait, bonus_info in character_bonuses.items():
+                    if main_trait == trait and bonus_info["action"] in action_type:
+                        for stat, bonus in bonus_info["bonus"].items():
+                            if stat in self.stats:
+                                self.stats[stat] = min(100, max(0, self.stats[stat] + bonus))
+                                result["stat_changes"][stat] = result["stat_changes"].get(stat, 0) + bonus
+                            elif stat in self.skills:
+                                self.skills[stat] = min(100, self.skills[stat] + bonus)
+                                result["skill_changes"][stat] = result["skill_changes"].get(stat, 0) + bonus
+                        
+                        trait_name = main_trait.capitalize()
+                        if result["message"]:
+                            result["message"] += f"\n✨ {trait_name} получает дополнительный бонус!"
+                        else:
+                            result["message"] = f"✨ {trait_name} получает дополнительный бонус!"
+                        break
                 
                 # ОБНОВЛЯЕМ СТАТИСТИКУ ДЕЙСТВИЙ
                 if action_type == "кофе":

@@ -93,6 +93,7 @@ class DragonDatabase:
                 sound_effects INTEGER DEFAULT 1,
                 background_music INTEGER DEFAULT 0,
                 timezone TEXT DEFAULT 'UTC',
+                notifications_enabled INTEGER DEFAULT 1,  # НОВОЕ: общий флаг уведомлений
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
@@ -247,7 +248,8 @@ class DragonDatabase:
             "SELECT item_name, quantity FROM inventory WHERE user_id = ?",
             (user_id,)
         )
-        return {row[0]: row[1] for row in self.cursor.fetchall()}
+        result = self.cursor.fetchall()
+        return {row[0]: row[1] for row in result} if result else {}
     
     def update_inventory(self, user_id: int, item_name: str, quantity_change: int) -> bool:
         """Обновляет количество предмета в инвентаре"""
@@ -399,15 +401,15 @@ class DragonDatabase:
             for row in rows
         ]
     
-    # НОВЫЕ ФУНКЦИИ ДЛЯ v5.0
+    # ==== НОВЫЕ ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С BOT.PY ====
     
-    def record_action(self, user_id: int, action_type: str, details: str = None) -> bool:
-        """Записывает действие пользователя для уведомлений"""
+    def record_action(self, user_id: int, action: str) -> bool:
+        """Записывает действие пользователя (для совместимости с bot.py)"""
         try:
             self.cursor.execute('''
                 INSERT INTO user_actions (user_id, action_type, action_details)
                 VALUES (?, ?, ?)
-            ''', (user_id, action_type, details))
+            ''', (user_id, 'general', action))
             
             # Обновляем время последней активности
             self.cursor.execute(
@@ -417,17 +419,19 @@ class DragonDatabase:
             
             # Обновляем статистику
             stat_column = None
-            if action_type in ["кофе", "кофе_арт"]:
+            action_lower = action.lower()
+            
+            if "кофе" in action_lower:
                 stat_column = "total_coffees"
-            elif "корм" in action_type or "feed" in action_type:
+            elif "корм" in action_lower or "feed" in action_lower:
                 stat_column = "total_feeds"
-            elif "обним" in action_type or "hug" in action_type:
+            elif "обним" in action_lower or "hug" in action_lower:
                 stat_column = "total_hugs"
-            elif "игр" in action_type or "game" in action_type:
+            elif "игр" in action_lower or "game" in action_lower:
                 stat_column = "total_games"
-            elif "уход" in action_type or "care" in action_type:
+            elif "уход" in action_lower or "care" in action_lower:
                 stat_column = "total_care"
-            elif "сон" in action_type or "sleep" in action_type:
+            elif "сон" in action_lower or "sleep" in action_lower:
                 stat_column = "total_sleep"
             
             if stat_column:
@@ -441,45 +445,6 @@ class DragonDatabase:
         except Exception as e:
             print(f"Ошибка записи действия: {e}")
             return False
-    
-    def get_last_action_time(self, user_id: int, action_type: str = None) -> Optional[datetime]:
-        """Получает время последнего действия определенного типа"""
-        try:
-            if action_type:
-                self.cursor.execute('''
-                    SELECT created_at FROM user_actions 
-                    WHERE user_id = ? AND action_type = ?
-                    ORDER BY created_at DESC LIMIT 1
-                ''', (user_id, action_type))
-            else:
-                self.cursor.execute('''
-                    SELECT created_at FROM user_actions 
-                    WHERE user_id = ?
-                    ORDER BY created_at DESC LIMIT 1
-                ''', (user_id,))
-            
-            result = self.cursor.fetchone()
-            if result and result[0]:
-                return datetime.fromisoformat(result[0])
-            return None
-        except Exception as e:
-            print(f"Ошибка получения времени действия: {e}")
-            return None
-    
-    def get_last_action(self, user_id: int) -> Optional[str]:
-        """Получает описание последнего действия"""
-        try:
-            self.cursor.execute('''
-                SELECT action_details FROM user_actions 
-                WHERE user_id = ?
-                ORDER BY created_at DESC LIMIT 1
-            ''', (user_id,))
-            
-            result = self.cursor.fetchone()
-            return result[0] if result else None
-        except Exception as e:
-            print(f"Ошибка получения последнего действия: {e}")
-            return None
     
     def get_user_settings(self, user_id: int) -> Dict:
         """Получает настройки пользователя"""
@@ -502,6 +467,28 @@ class DragonDatabase:
         except Exception as e:
             print(f"Ошибка получения настроек: {e}")
             return {}
+    
+    def update_user_setting(self, user_id: int, key: str, value: Any) -> bool:
+        """Обновляет одну настройку пользователя (для совместимости с bot.py)"""
+        try:
+            # Проверяем существование настроек
+            self.cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (user_id,))
+            if not self.cursor.fetchone():
+                self.cursor.execute(
+                    "INSERT INTO user_settings (user_id) VALUES (?)",
+                    (user_id,)
+                )
+            
+            # Обновляем конкретную настройку
+            self.cursor.execute(
+                f"UPDATE user_settings SET {key} = ? WHERE user_id = ?",
+                (value, user_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка обновления настройки: {e}")
+            return False
     
     def update_user_settings(self, user_id: int, settings: Dict) -> bool:
         """Обновляет настройки пользователя"""
@@ -676,6 +663,7 @@ class DragonDatabase:
             LIMIT ?
         ''', (limit,))
         
+        rows = self.cursor.fetchall()
         return [
             {
                 'user_id': row[0],
@@ -684,8 +672,8 @@ class DragonDatabase:
                 'experience': row[3],
                 'username': row[4]
             }
-            for row in self.cursor.fetchall()
-        ]
+            for row in rows
+        ] if rows else []
     
     def cleanup_old_data(self, days: int = 30) -> int:
         """Очищает старые данные (действия старше N дней)"""
@@ -764,6 +752,71 @@ class DragonDatabase:
         except Exception as e:
             print(f"Ошибка создания бэкапа: {e}")
             return None
+    
+    # ==== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПРОСТОТЫ ====
+    
+    def get_last_action_time(self, user_id: int, action_type: str = None) -> Optional[datetime]:
+        """Получает время последнего действия"""
+        try:
+            if action_type:
+                self.cursor.execute('''
+                    SELECT created_at FROM user_actions 
+                    WHERE user_id = ? AND action_details LIKE ?
+                    ORDER BY created_at DESC LIMIT 1
+                ''', (user_id, f"%{action_type}%"))
+            else:
+                self.cursor.execute('''
+                    SELECT created_at FROM user_actions 
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC LIMIT 1
+                ''', (user_id,))
+            
+            result = self.cursor.fetchone()
+            if result and result[0]:
+                return datetime.fromisoformat(result[0])
+            return None
+        except Exception as e:
+            print(f"Ошибка получения времени действия: {e}")
+            return None
+    
+    def get_last_action(self, user_id: int) -> Optional[str]:
+        """Получает описание последнего действия"""
+        try:
+            self.cursor.execute('''
+                SELECT action_details FROM user_actions 
+                WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT 1
+            ''', (user_id,))
+            
+            result = self.cursor.fetchone()
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Ошибка получения последнего действия: {e}")
+            return None
+    
+    def get_action_history(self, user_id: int, limit: int = 20) -> List[Dict]:
+        """Получает историю действий пользователя"""
+        try:
+            self.cursor.execute('''
+                SELECT action_type, action_details, created_at 
+                FROM user_actions 
+                WHERE user_id = ?
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (user_id, limit))
+            
+            rows = self.cursor.fetchall()
+            return [
+                {
+                    'type': row[0],
+                    'details': row[1],
+                    'time': datetime.fromisoformat(row[2])
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            print(f"Ошибка получения истории действий: {e}")
+            return []
     
     def close(self):
         """Закрывает соединение с базой"""
