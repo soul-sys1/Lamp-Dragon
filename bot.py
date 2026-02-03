@@ -1,6 +1,6 @@
 """
-🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.1.3
-ИСПРАВЛЕННАЯ ВЕРСИЯ - Все критические ошибки устранены
+🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.1.4
+ИСПРАВЛЕННАЯ ВЕРСИЯ - Все критические ошибки устранены, навигация исправлена
 """
 import asyncio
 import logging
@@ -1125,6 +1125,57 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
         reply_markup=get_main_keyboard()
     )
 
+# ==================== ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ НАВИГАЦИИ ====================
+@dp.callback_query(F.data.in_(["shop_close", "shop_back"]))
+async def process_shop_navigation(callback: types.CallbackQuery, state: FSMContext):
+    """Обработчик навигации в магазине (доступен из любого состояния)"""
+    try:
+        user_id = callback.from_user.id
+        action = callback.data.replace("shop_", "")
+        
+        if action == "close":
+            await state.clear()
+            await callback.message.delete()
+            await callback.answer("🛍️ Магазин закрыт")
+            return
+            
+        elif action == "back":
+            # Получаем данные дракона
+            dragon_data = db.get_dragon(user_id)
+            if not dragon_data:
+                await callback.answer("❌ У вас нет дракона")
+                return
+                
+            dragon = Dragon.from_dict(dragon_data)
+            
+            # Показываем главное меню магазина
+            await callback.message.edit_text(
+                f"<b>🛍️ МАГАЗИН КОФЕЙНОГО ДРАКОНА</b>\n\n"
+                f"💰 <b>Ваш баланс:</b> <code>{dragon.gold}</code> золота\n\n"
+                f"👇 <b>Выбери категорию товаров:</b>",
+                parse_mode="HTML",
+                reply_markup=get_shop_main_keyboard()
+            )
+            # Устанавливаем правильное состояние
+            await state.set_state(GameStates.shop_main)
+            await state.update_data(dragon_data=dragon.to_dict())
+            await callback.answer("↩️ В главное меню магазина")
+            
+    except Exception as e:
+        logger.error(f"Ошибка в process_shop_navigation: {e}")
+        await callback.answer("❌ Произошла ошибка")
+
+@dp.callback_query(F.data == "close")
+async def process_global_close(callback: types.CallbackQuery, state: FSMContext):
+    """Глобальный обработчик кнопки закрытия"""
+    try:
+        await state.clear()
+        await callback.message.delete()
+        await callback.answer("✅ Закрыто")
+    except Exception as e:
+        logger.error(f"Ошибка в process_global_close: {e}")
+        await callback.answer("❌ Ошибка при закрытии")
+
 # ==================== НАЧАЛЬНЫЙ ЭКРАН И БАЗОВЫЕ КОМАНДЫ ====================
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -1145,10 +1196,10 @@ async def cmd_start(message: types.Message):
             
             f"<b>🐾 Тебе выпала честь стать хранителем одного из них!</b>\n\n"
             
-            f"<b>📋 ВОЗМОЖНОСТИ 6.1.2:</b>\n"
+            f"<b>📋 ВОЗМОЖНОСТИ 6.1.4:</b>\n"
             f"• 🎭 <b>10 уникальных характеров</b> с глубокой проработкой\n"
             f"• ⏳ <b>Менее агрессивные показатели</b> (5%/час)\n"
-            f"• 🛍️ <b>Рабочий магазин</b> с 3 категориями\n"
+            f"• 🛍️ <b>Рабочий магазин</b> с исправленной навигацией\n"
             f"• 📚 <b>Рабочие сказки</b> и чтение\n"
             f"• ❤️ <b>Уникальные реакции</b> для каждого дракона\n\n"
         )
@@ -1185,7 +1236,7 @@ async def cmd_help(message: types.Message, state: FSMContext):
         has_dragon = db.dragon_exists(user_id)
         
         help_text = (
-            "<b>📚 КОМАНДЫ И ХАРАКТЕРЫ (v6.1.2)</b>\n\n"
+            "<b>📚 КОМАНДЫ И ХАРАКТЕРЫ (v6.1.4)</b>\n\n"
             
             "<b>🐉 ОСНОВНЫЕ КОМАНДЫ:</b>\n"
             "<code>/start</code> - начать игру\n"
@@ -1227,16 +1278,16 @@ async def cmd_help(message: types.Message, state: FSMContext):
 
 @dp.callback_query(GameStates.help_section, F.data.startswith("help_"))
 async def process_help_section(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка разделов помощи"""
+    """Обработка разделов помощи - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         user_id = callback.from_user.id
         action = callback.data.replace("help_", "")
         
         if action == "back":
-            with suppress(Exception):
-                await callback.message.delete()
-            await callback.answer("↩️ Возвращаемся...")
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Явно очищаем состояние
             await state.clear()
+            await callback.message.delete()
+            await callback.answer("↩️ Возвращаемся...")
             return
         
         if action == "commands":
@@ -1322,17 +1373,15 @@ async def process_character_detail(callback: types.CallbackQuery, state: FSMCont
         action = callback.data.replace("char_", "")
         
         if action == "back":
-            characters_intro = (
-                "<b>🎭 ВСЕ ХАРАКТЕРЫ ДРАКОНОВ</b>\n\n"
-                "<i>👇 Выбери характер, чтобы узнать о нём подробнее:</i>"
-            )
-            
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Явно показываем меню помощи
             await callback.message.edit_text(
-                characters_intro,
+                "<b>📚 Помощь</b>\n\nВыберите раздел:",
                 parse_mode="HTML",
-                reply_markup=get_characters_list_keyboard()
+                reply_markup=get_help_keyboard()
             )
-            await callback.answer()
+            # Состояние уже GameStates.help_section, но для надёжности:
+            await state.set_state(GameStates.help_section)
+            await callback.answer("↩️ Возвращаемся в помощь")
             return
         
         # Сопоставление callback с названиями характеров
@@ -1649,10 +1698,9 @@ async def process_shop_main(callback: types.CallbackQuery, state: FSMContext):
         action = callback.data.replace("shop_", "")
         
         if action == "close":
-            with suppress(Exception):
-                await callback.message.delete()
-            await callback.answer("🛍️ Магазин закрыт")
             await state.clear()
+            await callback.message.delete()
+            await callback.answer("🛍️ Магазин закрыт")
             return
         
         data = await state.get_data()
@@ -1737,7 +1785,7 @@ async def process_shop_main(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("buy_"))
 async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка покупки товара - УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПРОВЕРКИ СОСТОЯНИЙ"""
+    """Обработка покупки товара - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         user_id = callback.from_user.id
         item_id = callback.data.replace("buy_", "")
@@ -1818,14 +1866,18 @@ async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
         db.update_dragon(user_id, dragon.to_dict())
         db.record_action(user_id, f"Купил {item_id} за {price} золота")
         
-        # Просто показываем успешную покупку без проверки состояния
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Обновляем состояние после покупки
+        await state.set_state(GameStates.shop_main)
+        await state.update_data(dragon_data=dragon.to_dict())
+        
+        # Показываем успешную покупку с обновлённой клавиатурой магазина
         await callback.message.edit_text(
             f"<b>✅ УСПЕШНАЯ ПОКУПКА!</b>\n\n"
             f"Вы купили <b>{item_id.replace('_', ' ').title()}</b> за <code>{price}</code>💰\n\n"
             f"💰 <b>Новый баланс:</b> <code>{dragon.gold}</code> золота\n\n"
             f"<i>💡 Теперь вы можете использовать этот предмет!</i>",
             parse_mode="HTML",
-            reply_markup=get_shop_main_keyboard()  # Возвращаем в главное меню магазина
+            reply_markup=get_shop_main_keyboard()
         )
         
         await callback.answer(f"✅ Куплено за {price}💰")
@@ -1863,7 +1915,7 @@ async def cmd_inventory(message: types.Message, state: FSMContext):
             f"📊 <b>Всего предметов:</b> <code>{total_items}</code>\n\n"
             f"👇 <b>Выбери категорию для просмотра:</b>\n\n"
             f"• 🍪 <b>Сладости</b> - угощения для дракона\n"
-            f"• ✨ <b>Уход</b> - предметы для заботы\n"
+            f"• ✨ <b>Уход</b> - предметы для заботя\n"
             f"• ☕ <b>Ингредиенты</b> - для приготовления кофе\n"
             f"• 🧸 <b>Прочее</b> - разные полезные вещи\n\n"
             f"<i>💡 Предметы используются автоматически при соответствующих действиях!</i>",
@@ -3449,7 +3501,7 @@ async def periodic_tasks():
 async def main():
     """Основная функция запуска бота"""
     try:
-        logger.info("Запуск бота Кофейный Дракон v6.1.3 (исправленная версия)...")
+        logger.info("Запуск бота Кофейный Дракон v6.1.4 (исправленная версия)...")
         
         # Добавляем обработчик ошибок
         dp.error.register(error_handler)
