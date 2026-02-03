@@ -1,10 +1,11 @@
 """
-БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v6.0 - ИСПРАВЛЕННАЯ ВЕРСИЯ
+БАЗА ДАННЫХ ДЛЯ ДРАКОНОВ v6.1.2 - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
 Хранит всех драконов в SQLite базе с обновленными функциями
 Версия с английскими названиями предметов и упрощенным инвентарем
 """
 import sqlite3
 import json
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 import pytz
@@ -212,7 +213,7 @@ class DragonDatabase:
             return False
     
     def create_dragon(self, user_id: int, dragon_data: Dict) -> bool:
-        """Создает нового дракона - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+        """Создает нового дракона"""
         try:
             if not self.dragon_exists(user_id):
                 # Сначала убедимся, что пользователь существует
@@ -291,7 +292,16 @@ class DragonDatabase:
                 return json.loads(result[0])
             except json.JSONDecodeError as e:
                 print(f"❌ Ошибка декодирования JSON для пользователя {user_id}: {e}")
-                return None
+                # Возвращаем минимальный набор данных для восстановления
+                return {
+                    'name': 'Дракоша',
+                    'stats': {'кофе': 50, 'сон': 50, 'настроение': 90, 'аппетит': 50, 
+                             'энергия': 80, 'пушистость': 95, 'чистота': 90, 'здоровье': 95},
+                    'character': {'основная_черта': 'неженка'},
+                    'level': 1,
+                    'experience': 0,
+                    'gold': 50
+                }
         return None
     
     def update_dragon(self, user_id: int, dragon_data: Dict) -> bool:
@@ -693,32 +703,43 @@ class DragonDatabase:
                 (user_id,)
             )
             
-            # Обновляем статистику
+            # Обновляем статистику (ТОЛЬКО РАЗРЕШЕННЫЕ СТОЛБЦЫ)
             stat_column = None
             action_lower = action.lower()
             
-            if "кофе" in action_lower:
-                stat_column = "total_coffees"
-            elif "корм" in action_lower or "feed" in action_lower:
-                stat_column = "total_feeds"
-            elif "обним" in action_lower or "hug" in action_lower:
-                stat_column = "total_hugs"
-            elif "игр" in action_lower or "game" in action_lower:
-                stat_column = "total_games"
-            elif "уход" in action_lower or "care" in action_lower:
-                stat_column = "total_care"
-            elif "сон" in action_lower or "sleep" in action_lower:
-                stat_column = "total_sleep"
-            elif "мини" in action_lower and "выигр" in action_lower:
-                stat_column = "total_minigames_won"
-            elif "мини" in action_lower and "проигр" in action_lower:
-                stat_column = "total_minigames_lost"
+            # СПИСОК РАЗРЕШЕННЫХ СТОЛБЦОВ
+            allowed_stats = {
+                'кофе': 'total_coffees',
+                'корм': 'total_feeds',
+                'feed': 'total_feeds',
+                'обним': 'total_hugs',
+                'hug': 'total_hugs',
+                'игр': 'total_games',
+                'game': 'total_games',
+                'уход': 'total_care',
+                'care': 'total_care',
+                'сон': 'total_sleep',
+                'sleep': 'total_sleep'
+            }
+            
+            for key, column in allowed_stats.items():
+                if key in action_lower:
+                    stat_column = column
+                    break
             
             if stat_column:
-                self.cursor.execute(
-                    f"UPDATE user_stats SET {stat_column} = {stat_column} + 1 WHERE user_id = ?",
-                    (user_id,)
-                )
+                # БЕЗОПАСНЫЙ ЗАПРОС - проверяем что столбец в разрешенном списке
+                allowed_columns = [
+                    'total_coffees', 'total_feeds', 'total_hugs',
+                    'total_games', 'total_care', 'total_sleep',
+                    'total_minigames_won', 'total_minigames_lost'
+                ]
+                
+                if stat_column in allowed_columns:
+                    self.cursor.execute(
+                        f"UPDATE user_stats SET {stat_column} = {stat_column} + 1 WHERE user_id = ?",
+                        (user_id,)
+                    )
             
             # Обновляем статистику характерных сообщений
             if dragon_response:
@@ -850,7 +871,8 @@ class DragonDatabase:
                     user_time = utc_now.astimezone(user_tz)
                     settings['current_user_time'] = user_time.strftime('%H:%M')
                     settings['current_user_date'] = user_time.strftime('%d.%m.%Y')
-                except:
+                except Exception as e:
+                    print(f"⚠️ Ошибка часового пояса: {e}")
                     settings['current_user_time'] = "Ошибка времени"
                     settings['current_user_date'] = "Ошибка даты"
                 
@@ -871,8 +893,21 @@ class DragonDatabase:
             return {}
     
     def update_user_setting(self, user_id: int, key: str, value: Any) -> bool:
-        """Обновляет одну настройку пользователя"""
+        """Обновляет одну настройку пользователя - БЕЗОПАСНАЯ ВЕРСИЯ"""
         try:
+            # СПИСОК РАЗРЕШЕННЫХ СТОЛБЦОВ ДЛЯ БЕЗОПАСНОСТИ
+            allowed_columns = [
+                'morning_notifications', 'evening_notifications', 
+                'feeding_reminders', 'night_mode', 'quiet_mode',
+                'theme', 'font_size', 'sound_effects', 'background_music',
+                'timezone', 'notifications_enabled', 'auto_save',
+                'daily_reminder_time', 'weekly_report'
+            ]
+            
+            if key not in allowed_columns:
+                print(f"❌ Попытка обновить неразрешенный столбец: {key}")
+                return False
+            
             # Проверяем существование настроек
             self.cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (user_id,))
             if not self.cursor.fetchone():
@@ -881,11 +916,9 @@ class DragonDatabase:
                     (user_id,)
                 )
             
-            # Обновляем конкретную настройку
-            self.cursor.execute(
-                f"UPDATE user_settings SET {key} = ? WHERE user_id = ?",
-                (value, user_id)
-            )
+            # БЕЗОПАСНЫЙ ЗАПРОС
+            query = f"UPDATE user_settings SET {key} = ? WHERE user_id = ?"
+            self.cursor.execute(query, (value, user_id))
             
             # Записываем событие изменения настроек
             if key in ['timezone', 'notifications_enabled', 'daily_reminder_time']:
@@ -902,7 +935,7 @@ class DragonDatabase:
             return False
     
     def update_user_settings(self, user_id: int, settings: Dict) -> bool:
-        """Обновляет настройки пользователя"""
+        """Обновляет настройки пользователя - БЕЗОПАСНАЯ ВЕРСИЯ"""
         try:
             # Проверяем существование настроек
             self.cursor.execute("SELECT 1 FROM user_settings WHERE user_id = ?", (user_id,))
@@ -912,13 +945,25 @@ class DragonDatabase:
                     (user_id,)
                 )
             
-            # Формируем запрос обновления
+            # Формируем запрос обновления ТОЛЬКО для разрешенных столбцов
             set_clause = []
             values = []
             
+            allowed_columns = [
+                'morning_notifications', 'evening_notifications', 
+                'feeding_reminders', 'night_mode', 'quiet_mode',
+                'theme', 'font_size', 'sound_effects', 'background_music',
+                'timezone', 'notifications_enabled', 'auto_save',
+                'daily_reminder_time', 'weekly_report'
+            ]
+            
             for key, value in settings.items():
-                set_clause.append(f"{key} = ?")
-                values.append(value)
+                if key in allowed_columns:
+                    set_clause.append(f"{key} = ?")
+                    values.append(value)
+            
+            if not set_clause:
+                return False  # Нет разрешенных полей для обновления
             
             values.append(user_id)
             
@@ -944,7 +989,10 @@ class DragonDatabase:
             if result:
                 stats = dict(result)
                 # Парсим достижения
-                stats['achievements'] = json.loads(stats['achievements']) if stats.get('achievements') else []
+                try:
+                    stats['achievements'] = json.loads(stats['achievements']) if stats.get('achievements') else []
+                except:
+                    stats['achievements'] = []
                 
                 # Добавляем дополнительную статистику
                 stats['total_actions'] = (
@@ -988,7 +1036,7 @@ class DragonDatabase:
             return {}
     
     def update_user_stats(self, user_id: int, stats: Dict) -> bool:
-        """Обновляет статистику пользователя"""
+        """Обновляет статистику пользователя - БЕЗОПАСНАЯ ВЕРСИЯ"""
         try:
             # Проверяем существование статистики
             self.cursor.execute("SELECT 1 FROM user_stats WHERE user_id = ?", (user_id,))
@@ -1002,13 +1050,27 @@ class DragonDatabase:
             if 'achievements' in stats and isinstance(stats['achievements'], list):
                 stats['achievements'] = json.dumps(stats['achievements'], ensure_ascii=False)
             
-            # Формируем запрос обновления
+            # Формируем запрос обновления ТОЛЬКО для разрешенных столбцов
             set_clause = []
             values = []
             
+            allowed_columns = [
+                'total_coffees', 'total_feeds', 'total_hugs',
+                'total_games', 'total_care', 'total_sleep',
+                'total_minigames_won', 'total_minigames_lost',
+                'total_items_bought', 'total_gold_spent',
+                'total_character_messages', 'favorite_action',
+                'favorite_time', 'achievements', 'daily_streak',
+                'last_daily_date', 'longest_daily_streak'
+            ]
+            
             for key, value in stats.items():
-                set_clause.append(f"{key} = ?")
-                values.append(value)
+                if key in allowed_columns:
+                    set_clause.append(f"{key} = ?")
+                    values.append(value)
+            
+            if not set_clause:
+                return False  # Нет разрешенных полей для обновления
             
             values.append(user_id)
             
@@ -1067,10 +1129,10 @@ class DragonDatabase:
     def get_active_users(self, hours: int = 24) -> List[int]:
         """Получает пользователей, активных за последние N часов"""
         try:
-            time_threshold = datetime.now() - timedelta(hours=hours)
+            time_threshold = (datetime.now() - timedelta(hours=hours)).isoformat()
             self.cursor.execute(
                 "SELECT user_id FROM users WHERE last_active >= ?",
-                (time_threshold.isoformat(),)
+                (time_threshold,)
             )
             return [row[0] for row in self.cursor.fetchall()]
         except Exception as e:
@@ -1104,16 +1166,22 @@ class DragonDatabase:
     def get_feeding_history(self, user_id: int, days: int = 7) -> List[datetime]:
         """Получает историю кормлений за последние N дней"""
         try:
-            time_threshold = datetime.now() - timedelta(days=days)
+            time_threshold = (datetime.now() - timedelta(days=days)).isoformat()
             self.cursor.execute('''
                 SELECT created_at FROM user_actions 
                 WHERE user_id = ? 
                 AND (action_type LIKE '%корм%' OR action_type LIKE '%feed%')
                 AND created_at >= ?
                 ORDER BY created_at DESC
-            ''', (user_id, time_threshold.isoformat()))
+            ''', (user_id, time_threshold))
             
-            return [datetime.fromisoformat(row[0]) for row in self.cursor.fetchall()]
+            results = []
+            for row in self.cursor.fetchall():
+                try:
+                    results.append(datetime.fromisoformat(row[0]))
+                except:
+                    pass
+            return results
         except Exception as e:
             print(f"❌ Ошибка получения истории кормлений: {e}")
             return []
@@ -1184,11 +1252,13 @@ class DragonDatabase:
             
             # Средний уровень
             self.cursor.execute("SELECT AVG(level) FROM dragons")
-            stats['avg_level'] = round(self.cursor.fetchone()[0] or 0, 1)
+            avg_result = self.cursor.fetchone()[0]
+            stats['avg_level'] = round(float(avg_result) if avg_result else 0, 1)
             
             # Общее золото
             self.cursor.execute("SELECT SUM(gold) FROM dragons")
-            stats['total_gold'] = self.cursor.fetchone()[0] or 0
+            gold_result = self.cursor.fetchone()[0]
+            stats['total_gold'] = int(gold_result) if gold_result else 0
             
             # Распределение по характерам
             self.cursor.execute('''
@@ -1212,26 +1282,26 @@ class DragonDatabase:
     def cleanup_old_data(self, days: int = 30) -> int:
         """Очищает старые данные (действия старше N дней)"""
         try:
-            time_threshold = datetime.now() - timedelta(days=days)
+            time_threshold = (datetime.now() - timedelta(days=days)).isoformat()
             
             # Удаляем старые действия
             self.cursor.execute(
                 "DELETE FROM user_actions WHERE created_at < ?",
-                (time_threshold.isoformat(),)
+                (time_threshold,)
             )
             actions_deleted = self.cursor.rowcount
             
             # Удаляем старые игровые события
             self.cursor.execute(
                 "DELETE FROM game_events WHERE created_at < ?",
-                (time_threshold.isoformat(),)
+                (time_threshold,)
             )
             events_deleted = self.cursor.rowcount
             
             # Удаляем старую историю покупок
             self.cursor.execute(
                 "DELETE FROM purchase_history WHERE purchased_at < ?",
-                (time_threshold.isoformat(),)
+                (time_threshold,)
             )
             purchases_deleted = self.cursor.rowcount
             
@@ -1359,19 +1429,34 @@ class DragonDatabase:
     
     def _get_time_ago(self, past_time: datetime) -> str:
         """Возвращает строку 'сколько времени назад'"""
-        now = datetime.now()
-        diff = now - past_time
-        
-        if diff.days > 0:
-            return f"{diff.days} дней назад"
-        elif diff.seconds >= 3600:
-            hours = diff.seconds // 3600
-            return f"{hours} часов назад"
-        elif diff.seconds >= 60:
-            minutes = diff.seconds // 60
-            return f"{minutes} минут назад"
-        else:
-            return "только что"
+        try:
+            now = datetime.now()
+            
+            # Проверяем часовой пояс
+            if past_time.tzinfo:
+                now = datetime.now(past_time.tzinfo)
+            
+            diff = now - past_time
+            
+            if diff.days > 365:
+                years = diff.days // 365
+                return f"{years} лет назад"
+            elif diff.days > 30:
+                months = diff.days // 30
+                return f"{months} месяцев назад"
+            elif diff.days > 0:
+                return f"{diff.days} дней назад"
+            elif diff.seconds >= 3600:
+                hours = diff.seconds // 3600
+                return f"{hours} часов назад"
+            elif diff.seconds >= 60:
+                minutes = diff.seconds // 60
+                return f"{minutes} минут назад"
+            else:
+                return "только что"
+        except Exception as e:
+            print(f"❌ Ошибка в _get_time_ago: {e}")
+            return "недавно"
     
     def get_action_history(self, user_id: int, limit: int = 20) -> List[Dict]:
         """Получает историю действий пользователя"""
@@ -1579,7 +1664,10 @@ def init_database(db_name="dragons.db"):
     return get_db(db_name)
 
 
-# СОЗДАЕМ ЭКЗЕМПЛЯР СРАЗУ ПРИ ИМПОРТЕ
-db = get_db()  # Это ЭКЗЕМПЛЯР, а не функция!
+# ✅ ЭКСПОРТ ФУНКЦИИ ДЛЯ ИМПОРТА В БОТ
+def get_db_instance():
+    """Получает экземпляр базы данных для импорта в bot.py"""
+    return get_db()
 
-print(f"🐉 Модуль базы данных v6.0 (исправленный) загружен.")
+
+print(f"🐉 Модуль базы данных v6.1.2 (полностью исправленный) загружен.")

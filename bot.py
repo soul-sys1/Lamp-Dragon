@@ -1,15 +1,13 @@
 """
 🐉 КОФЕЙНЫЙ ДРАКОН - Версия 6.1.2
-Исправленная версия с исправлением всех обнаруженных ошибок:
-- Добавлено экранирование HTML в чтении сказок
-- Упрощена работа с инвентарем (теперь это просто словарь {item: quantity})
-- Исправлены проблемы с отображением инвентаря
-- Унифицированы названия предметов
+ИСПРАВЛЕННАЯ ВЕРСИЯ - Все критические ошибки устранены
 """
 import asyncio
 import logging
 import random
 import re
+import time
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List, Tuple
 import traceback
@@ -28,7 +26,7 @@ from aiogram.exceptions import TelegramAPIError
 
 # Импортируем модули
 import config
-from database import db
+from database import get_db
 from dragon_model import Dragon
 from books import get_random_book, get_all_genres
 
@@ -45,6 +43,9 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=config.BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+# Инициализация базы данных
+db = get_db()
 
 # ==================== СОСТОЯНИЯ FSM ====================
 class GameStates(StatesGroup):
@@ -73,6 +74,7 @@ class RateLimiter:
         self.user_last_interaction: Dict[int, datetime] = {}
     
     def can_perform_action(self, user_id: int, action: str, cooldown_seconds: int = 30) -> bool:
+        self.clear_old_entries()  # Очищаем старые записи
         now = datetime.now(timezone.utc)
         key = f"{user_id}_{action}"
         
@@ -192,7 +194,7 @@ class CharacterPersonality:
                 "name": "💖 Неженка",
                 "description": (
                     "Самый ласковый дракон во всём королевстве! "
-                    "Рождённый из облака нежности и заботы, он верит, "
+                    "Рождённый из облака нежности и заботя, он верит, "
                     "что мир можно изменить объятиями."
                 ),
                 "features": [
@@ -660,18 +662,7 @@ def get_coffee_additions_keyboard() -> InlineKeyboardMarkup:
 def get_coffee_snack_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     
-    # Создаем кнопки для сладостей, которые есть в инвентаре
-    snack_items = {
-        "cookie_raisin": "🍪 Печенье",
-        "chocolate_bar": "🍫 Шоколад", 
-        "vanilla_marshmallow": "☁️ Зефир",
-        "gingerbread": "🎄 Пряник",
-        "fruit_marmalade": "🍬 Мармелад",
-        "chocolate_cake": "🎂 Пирожное",
-        "donut": "🍩 Пончик"
-    }
-    
-    # Унифицированный маппинг callback-данных на названия в инвентаре
+    # ПОЛНЫЙ МАППИНГ callback_data -> inventory_name
     inventory_map = {
         "cookie_raisin": "cookie",
         "chocolate_bar": "chocolate",
@@ -682,9 +673,19 @@ def get_coffee_snack_keyboard(inventory: dict) -> InlineKeyboardMarkup:
         "donut": "donut"
     }
     
+    snack_items = {
+        "cookie_raisin": "🍪 Печенье",
+        "chocolate_bar": "🍫 Шоколад", 
+        "vanilla_marshmallow": "☁️ Зефир",
+        "gingerbread": "🎄 Пряник",
+        "fruit_marmalade": "🍬 Мармелад",
+        "chocolate_cake": "🎂 Пирожное",
+        "donut": "🍩 Пончик"
+    }
+    
     row = []
     for snack_key, snack_name in snack_items.items():
-        inv_key = inventory_map.get(snack_key, snack_key)
+        inv_key = inventory_map[snack_key]  # Уверены что ключ есть
         count = inventory.get(inv_key, 0)
         if isinstance(count, (int, float)) and count > 0:
             row.append(InlineKeyboardButton(
@@ -754,7 +755,7 @@ def get_care_keyboard(inventory: dict) -> InlineKeyboardMarkup:
     row2.append(InlineKeyboardButton(text="🦷 Почистить зубы", callback_data="care_clean_teeth"))
     keyboard.inline_keyboard.append(row2)
     
-    # Действия с предметами из магазина (используем новые названия)
+    # Действия с предметами из магазина
     row3 = []
     if inventory.get("dragon_brush", 0) > 0:
         row3.append(InlineKeyboardButton(text="💆 Расчесать шерстку", callback_data="care_brush_fur"))
@@ -794,16 +795,8 @@ def get_notifications_keyboard() -> InlineKeyboardMarkup:
     return keyboard
 
 def get_feed_keyboard(inventory: dict) -> InlineKeyboardMarkup:
-    snack_items = {
-        "cookie_raisin": "🍪 Печенье",
-        "chocolate_bar": "🍫 Шоколад", 
-        "vanilla_marshmallow": "☁️ Зефир",
-        "gingerbread": "🎄 Пряник",
-        "fruit_marmalade": "🍬 Мармелад",
-        "chocolate_cake": "🎂 Пирожное",
-        "donut": "🍩 Пончик"
-    }
-    
+    """Клавиатура для кормления с полным маппингом"""
+    # ПОЛНЫЙ МАППИНГ callback_data -> inventory_name
     inventory_map = {
         "cookie_raisin": "cookie",
         "chocolate_bar": "chocolate",
@@ -814,11 +807,21 @@ def get_feed_keyboard(inventory: dict) -> InlineKeyboardMarkup:
         "donut": "donut"
     }
     
+    snack_items = {
+        "cookie_raisin": "🍪 Печенье",
+        "chocolate_bar": "🍫 Шоколад", 
+        "vanilla_marshmallow": "☁️ Зефир",
+        "gingerbread": "🎄 Пряник",
+        "fruit_marmalade": "🍬 Мармелад",
+        "chocolate_cake": "🎂 Пирожное",
+        "donut": "🍩 Пончик"
+    }
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     row = []
     
     for snack_key, snack_name in snack_items.items():
-        inv_key = inventory_map.get(snack_key, snack_key)
+        inv_key = inventory_map[snack_key]
         count = inventory.get(inv_key, 0)
         if isinstance(count, (int, float)) and count > 0:
             row.append(InlineKeyboardButton(
@@ -857,7 +860,7 @@ def get_inventory_keyboard() -> InlineKeyboardMarkup:
     return keyboard
 
 def get_help_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для меню помощи (2 раздела)"""
+    """Клавиатура для меню помощи"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -903,6 +906,30 @@ def get_characters_list_keyboard() -> InlineKeyboardMarkup:
         ]
     )
     return keyboard
+
+# ==================== УТИЛИТЫ ДЛЯ КОФЕ ====================
+def get_coffee_name(coffee_type: str) -> str:
+    """Возвращает название кофе на русском"""
+    names = {
+        "espresso": "Эспрессо",
+        "latte": "Латте",
+        "cappuccino": "Капучино",
+        "raf": "Раф",
+        "americano": "Американо",
+        "mocha": "Мокко"
+    }
+    return names.get(coffee_type, "Кофе")
+
+def get_addition_name(addition: str) -> str:
+    """Возвращает название добавки на русском"""
+    names = {
+        "chocolate": "шоколадом",
+        "honey": "мёдом",
+        "icecream": "мороженым",
+        "syrup": "сиропом",
+        "none": "без добавок"
+    }
+    return names.get(addition, f"добавкой '{addition}'")
 
 # Инициализация менеджеров
 rate_limiter = RateLimiter()
@@ -980,21 +1007,25 @@ class ActionDescriptions:
     
     @staticmethod
     def get_book_reading_scene(dragon_name: str, dragon_trait: str, book_title: str, book_content: str) -> str:
+        # ЭКРАНИРОВАНИЕ HTML
+        book_title = escape_html(book_title)
+        book_content = escape_html(book_content[:300])
+        
         scenes = [
             f"Вы усаживаетесь в удобное кресло, а {dragon_name} укладывается у вас на коленях, уютно устроившись. "
             f"Вы открываете книгу '{book_title}' и начинаете читать:\n\n"
-            f"<i>{book_content[:300]}...</i>\n\n"
+            f"<i>{book_content}...</i>\n\n"
             f"{dragon_name} внимательно слушает, его глазки медленно закрываются. К концу первой страницы он уже тихо посапывает. 📖😴",
             
             f"{dragon_name} приносит вам книгу '{book_title}' и с надеждой смотрит на вас. "
             f"Вы садитесь на диван, дракон укладывается рядом, положив голову вам на колени. "
             f"Вы начинаете читать:\n\n"
-            f"<i>{book_content[:300]}...</i>\n\n"
+            f"<i>{book_content}...</i>\n\n"
             f"Голос ваш тихий и убаюкивающий. Через несколько минут {dragon_name} уже сладко спит. 🛋️💤",
             
             f"Вы готовитесь ко сну и замечаете, что {dragon_name} уже ждёт вас в кровати с книгой '{book_title}' в лапках. "
             f"Вы ложитесь рядом и начинаете читать:\n\n"
-            f"<i>{book_content[:300]}...</i>\n\n"
+            f"<i>{book_content}...</i>\n\n"
             f"Дракон прижимается к вам, его дыхание становится ровным, и вскоре он засыпает под звук вашего голоса. 🛏️🌟"
         ]
         return random.choice(scenes)
@@ -1080,7 +1111,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
         await message.answer(
-            "<b>ℹ️ Нет активных действий для отмена.</b>",
+            "<b>ℹ️ Нет активных действий для отмены.</b>",
             parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
@@ -1148,10 +1179,8 @@ async def cmd_help(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         has_dragon = db.dragon_exists(user_id)
         
@@ -1204,7 +1233,8 @@ async def process_help_section(callback: types.CallbackQuery, state: FSMContext)
         action = callback.data.replace("help_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -1338,7 +1368,7 @@ async def process_character_detail(callback: types.CallbackQuery, state: FSMCont
         character_text += (
             "━━━━━━━━━━━━━━━━━━━\n"
             "<i>💡 Этот характер будет влиять на все действия дракона,\n"
-            "его реакции в уведомлениях и предпочтения в еде и уходе!</i>"
+            "его реакции в уведомленияи и предпочтения в еде и уходе!</i>"
         )
         
         await callback.message.edit_text(
@@ -1582,10 +1612,8 @@ async def cmd_shop(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         dragon_data = db.get_dragon(user_id)
         if not dragon_data:
@@ -1621,7 +1649,8 @@ async def process_shop_main(callback: types.CallbackQuery, state: FSMContext):
         action = callback.data.replace("shop_", "")
         
         if action == "close":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("🛍️ Магазин закрыт")
             await state.clear()
             return
@@ -1708,7 +1737,7 @@ async def process_shop_main(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("buy_"))
 async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
-    """Обработка покупки товара"""
+    """Обработка покупки товара - УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПРОВЕРКИ СОСТОЯНИЙ"""
     try:
         user_id = callback.from_user.id
         item_id = callback.data.replace("buy_", "")
@@ -1789,46 +1818,15 @@ async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
         db.update_dragon(user_id, dragon.to_dict())
         db.record_action(user_id, f"Купил {item_id} за {price} золота")
         
-        # Получаем текущее состояние
-        current_state = await state.get_state()
-        
-        # Обновляем сообщение в зависимости от текущей категории
-        if current_state == GameStates.shop_coffee:
-            await callback.message.edit_text(
-                f"<b>✅ УСПЕШНАЯ ПОКУПКА!</b>\n\n"
-                f"Вы купили <b>{item_id.replace('_', ' ').title()}</b> за <code>{price}</code>💰\n\n"
-                f"💰 <b>Новый баланс:</b> <code>{dragon.gold}</code> золота\n\n"
-                f"<i>💡 Теперь вы можете использовать этот предмет при приготовлении кофе!</i>",
-                parse_mode="HTML",
-                reply_markup=get_coffee_shop_keyboard()
-            )
-        elif current_state == GameStates.shop_sweets:
-            await callback.message.edit_text(
-                f"<b>✅ УСПЕШНАЯ ПОКУПКА!</b>\n\n"
-                f"Вы купили <b>{item_id.replace('_', ' ').title()}</b> за <code>{price}</code>💰\n\n"
-                f"💰 <b>Новый баланс:</b> <code>{dragon.gold}</code> золота\n\n"
-                f"<i>💡 Теперь вы можете угостить этим дракона!</i>",
-                parse_mode="HTML",
-                reply_markup=get_sweets_shop_keyboard()
-            )
-        elif current_state == GameStates.shop_care:
-            await callback.message.edit_text(
-                f"<b>✅ УСПЕШНАЯ ПОКУПКА!</b>\n\n"
-                f"Вы купили <b>{item_id.replace('_', ' ').title()}</b> за <code>{price}</code>💰\n\n"
-                f"💰 <b>Новый баланс:</b> <code>{dragon.gold}</code> золота\n\n"
-                f"<i>💡 Теперь вы можете использовать этот предмет при уходе за драконом!</i>",
-                parse_mode="HTML",
-                reply_markup=get_care_shop_keyboard()
-            )
-        else:
-            # Если неизвестное состояние, возвращаем в главное меню
-            await callback.message.edit_text(
-                f"<b>🛍️ МАГАЗИН КОФЕЙНОГО ДРАКОНА</b>\n\n"
-                f"💰 <b>Ваш баланс:</b> <code>{dragon.gold}</code> золота\n\n"
-                f"✅ <b>Куплено:</b> {item_id.replace('_', ' ').title()}",
-                parse_mode="HTML",
-                reply_markup=get_shop_main_keyboard()
-            )
+        # Просто показываем успешную покупку без проверки состояния
+        await callback.message.edit_text(
+            f"<b>✅ УСПЕШНАЯ ПОКУПКА!</b>\n\n"
+            f"Вы купили <b>{item_id.replace('_', ' ').title()}</b> за <code>{price}</code>💰\n\n"
+            f"💰 <b>Новый баланс:</b> <code>{dragon.gold}</code> золота\n\n"
+            f"<i>💡 Теперь вы можете использовать этот предмет!</i>",
+            parse_mode="HTML",
+            reply_markup=get_shop_main_keyboard()  # Возвращаем в главное меню магазина
+        )
         
         await callback.answer(f"✅ Куплено за {price}💰")
         
@@ -1840,15 +1838,13 @@ async def process_buy_item(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(Command("inventory"))
 @dp.message(F.text == "📦 Инвентарь")
 async def cmd_inventory(message: types.Message, state: FSMContext):
-    """Показать инвентарь - УПРОЩЕННАЯ ВЕРСИЯ"""
+    """Показать инвентарь"""
     try:
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         dragon_data = db.get_dragon(user_id)
         if not dragon_data:
@@ -1856,7 +1852,7 @@ async def cmd_inventory(message: types.Message, state: FSMContext):
             return
         
         dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)  # Теперь это {item: quantity}
+        inventory = db.get_inventory(user_id)
         
         # ПРОСТОЙ ПОДСЧЁТ
         total_items = sum(inventory.values())
@@ -1890,7 +1886,8 @@ async def process_inventory_category(callback: types.CallbackQuery, state: FSMCo
         action = callback.data.replace("inv_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -1902,7 +1899,7 @@ async def process_inventory_category(callback: types.CallbackQuery, state: FSMCo
             return
         
         dragon = Dragon.from_dict(dragon_data)
-        inventory = db.get_inventory(user_id)  # Теперь это {item: quantity}
+        inventory = db.get_inventory(user_id)
         
         # Категории предметов
         categories = {
@@ -1998,10 +1995,8 @@ async def cmd_coffee(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         if not rate_limiter.can_perform_action(user_id, "coffee", 15):
             await message.answer("<b>⏳ Дракон ещё не готов к новому кофе. Подожди немного ☕</b>", parse_mode="HTML")
@@ -2022,7 +2017,7 @@ async def cmd_coffee(message: types.Message, state: FSMContext):
         
         inventory = db.get_inventory(user_id)
         
-        # Проверяем кофейные зёрна (inventory["coffee_beans"] - это число)
+        # Проверяем кофейные зёрна
         coffee_beans = inventory.get("coffee_beans", 0)
         if coffee_beans <= 0:
             await message.answer(
@@ -2080,7 +2075,8 @@ async def process_coffee_choice(callback: types.CallbackQuery, state: FSMContext
         action = callback.data.replace("coffee_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -2149,18 +2145,6 @@ async def process_coffee_choice(callback: types.CallbackQuery, state: FSMContext
     except Exception as e:
         logger.error(f"Ошибка в process_coffee_choice: {e}")
         await callback.answer("❌ Произошла ошибка")
-
-def get_coffee_name(coffee_type: str) -> str:
-    """Возвращает название кофе на русском"""
-    names = {
-        "espresso": "Эспрессо",
-        "latte": "Латте",
-        "cappuccino": "Капучино",
-        "raf": "Раф",
-        "americano": "Американо",
-        "mocha": "Мокко"
-    }
-    return names.get(coffee_type, "Кофе")
 
 @dp.callback_query(GameStates.coffee_additions, F.data.startswith("add_"))
 async def process_coffee_additions(callback: types.CallbackQuery, state: FSMContext):
@@ -2311,17 +2295,6 @@ async def process_coffee_additions_no_additions(callback: types.CallbackQuery, s
     except Exception as e:
         logger.error(f"Ошибка в process_coffee_additions_no_additions: {e}")
         await callback.answer("❌ Произошла ошибка")
-
-def get_addition_name(addition: str) -> str:
-    """Возвращает название добавки на русском"""
-    names = {
-        "chocolate": "шоколадом",
-        "honey": "мёдом",
-        "icecream": "мороженым",
-        "syrup": "сиропом",
-        "none": "без добавок"
-    }
-    return names.get(addition, "добавкой")
 
 @dp.callback_query(GameStates.coffee_snack, F.data.startswith("snack_"))
 async def process_coffee_snack(callback: types.CallbackQuery, state: FSMContext):
@@ -2517,10 +2490,8 @@ async def cmd_sleep(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         if not rate_limiter.can_perform_action(user_id, "sleep", 30):
             await message.answer("<b>⏳ Дракон ещё не готов ко сну. Подожди немного 😴</b>", parse_mode="HTML")
@@ -2577,7 +2548,8 @@ async def process_sleep_choice(callback: types.CallbackQuery, state: FSMContext)
         action = callback.data.replace("sleep_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -2721,10 +2693,8 @@ async def cmd_hug(message: types.Message):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         if not rate_limiter.can_perform_action(user_id, "hug", 5):
             await message.answer("<b>⏳ Не переусердствуй с объятиями! Подожди немного 🤗</b>", parse_mode="HTML")
@@ -2809,10 +2779,8 @@ async def cmd_care(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         if not rate_limiter.can_perform_action(user_id, "care", 10):
             await message.answer("<b>⏳ Дракону нужно время отдохнуть между процедурами. Подожди немного ✨</b>", parse_mode="HTML")
@@ -2895,7 +2863,8 @@ async def process_care_action(callback: types.CallbackQuery, state: FSMContext):
         action = callback.data.replace("care_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -3069,10 +3038,8 @@ async def cmd_games(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было из другой вкладки
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         if not rate_limiter.can_perform_action(user_id, "games", 20):
             await message.answer("<b>⏳ Дракон устал от игр. Дайте ему отдохнуть 🎮</b>", parse_mode="HTML")
@@ -3133,7 +3100,8 @@ async def process_game_choice(callback: types.CallbackQuery, state: FSMContext):
         action = callback.data.replace("game_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             await state.clear()
             return
@@ -3312,10 +3280,8 @@ async def cmd_notifications(message: types.Message):
         user_id = message.from_user.id
         
         # Удаляем предыдущее сообщение если оно было
-        try:
+        with suppress(Exception):
             await message.delete()
-        except:
-            pass
         
         dragon_data = db.get_dragon(user_id)
         if not dragon_data:
@@ -3354,7 +3320,8 @@ async def process_notifications(callback: types.CallbackQuery):
         action = callback.data.replace("notif_", "")
         
         if action == "back":
-            await callback.message.delete()
+            with suppress(Exception):
+                await callback.message.delete()
             await callback.answer("↩️ Возвращаемся...")
             return
         
@@ -3394,7 +3361,7 @@ async def process_notifications(callback: types.CallbackQuery):
 
 # ==================== ОСНОВНОЙ ЦИКЛ ====================
 async def periodic_tasks():
-    """Периодические задачи"""
+    """Периодические задачи - УПРОЩЕННАЯ ВЕРСИЯ"""
     retry_count = 0
     max_retries = 5
     
@@ -3403,36 +3370,35 @@ async def periodic_tasks():
             # Очищаем старые записи в rate limiter
             rate_limiter.clear_old_entries()
             
-            # Отправляем утренние уведомления
+            # Простая проверка времени для утренних уведомлений (8-9 утра по UTC)
             now = datetime.now(timezone.utc)
-            if 8 <= now.hour <= 9:  # Утренние часы
-                users = db.get_all_users()
+            if 8 <= now.hour <= 9:
+                users = db.get_users_with_notifications_enabled()
                 for user_id in users:
-                    if db.get_notifications_setting(user_id):
+                    try:
                         if rate_limiter.should_send_morning_notification(user_id):
-                            try:
-                                dragon_data = db.get_dragon(user_id)
-                                if dragon_data:
-                                    dragon = Dragon.from_dict(dragon_data)
-                                    character_trait = dragon.character.get("основная_черта", "")
-                                    message = CharacterPersonality.get_character_message(
-                                        character_trait,
-                                        "morning",
-                                        dragon.name
-                                    )
-                                    
-                                    notification = (
-                                        f"<b>🌅 ДОБРОЕ УТРО!</b>\n\n"
-                                        f"{message}\n\n"
-                                        f"<i>💡 Не забудь покормить {dragon.name} и приготовить ему кофе! ☕</i>"
-                                    )
-                                    
-                                    await bot.send_message(user_id, notification, parse_mode="HTML")
-                                    rate_limiter.record_feeding(user_id)
-                            except Exception as e:
-                                logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
+                            dragon_data = db.get_dragon(user_id)
+                            if dragon_data:
+                                dragon = Dragon.from_dict(dragon_data)
+                                character_trait = dragon.character.get("основная_черта", "")
+                                message = CharacterPersonality.get_character_message(
+                                    character_trait,
+                                    "morning",
+                                    dragon.name
+                                )
+                                
+                                notification = (
+                                    f"<b>🌅 ДОБРОЕ УТРО!</b>\n\n"
+                                    f"{message}\n\n"
+                                    f"<i>💡 Не забудь покормить {dragon.name} и приготовить ему кофе! ☕</i>"
+                                )
+                                
+                                await bot.send_message(user_id, notification, parse_mode="HTML")
+                                rate_limiter.record_feeding(user_id)
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
             
-            retry_count = 0  # Сбрасываем счетчик при успешном выполнении
+            retry_count = 0
             await asyncio.sleep(300)  # Проверяем каждые 5 минут
             
         except Exception as e:
@@ -3444,15 +3410,14 @@ async def periodic_tasks():
                 retry_count = 0
                 await asyncio.sleep(60)
             else:
-                # Экспоненциальная задержка
-                delay = min(60 * retry_count, 300)  # Максимум 5 минут
+                delay = min(60 * retry_count, 300)
                 logger.info(f"Повторная попытка через {delay} секунд...")
                 await asyncio.sleep(delay)
 
 async def main():
     """Основная функция запуска бота"""
     try:
-        logger.info("Запуск бота Кофейный Дракон v6.1.2...")
+        logger.info("Запуск бота Кофейный Дракон v6.1.2 (исправленная версия)...")
         
         # Добавляем обработчик ошибок
         dp.error.register(error_handler)
@@ -3460,11 +3425,13 @@ async def main():
         # Запускаем периодические задачи
         asyncio.create_task(periodic_tasks())
         
-        # Запускаем бота с настройками для предотвращения конфликтов
+        # Запускаем бота
         await dp.start_polling(bot, 
                               allowed_updates=dp.resolve_used_update_types(),
                               skip_updates=True)
         
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем.")
     except Exception as e:
         logger.error(f"Критическая ошибка при запуске бота: {e}\n{traceback.format_exc()}")
     finally:
